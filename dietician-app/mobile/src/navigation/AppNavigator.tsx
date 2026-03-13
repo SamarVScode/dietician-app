@@ -1,0 +1,26 @@
+// Navigator: AppNavigator
+// Root navigator that switches between Auth and Main stacks
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import AuthNavigator from './AuthNavigator';
+import MainNavigator from './MainNavigator';
+
+const Stack = createNativeStackNavigator();
+
+const AppNavigator: React.FC = () => {
+    const isAuthenticated = true;
+    return (
+        <NavigationContainer>
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+                {isAuthenticated ? (
+                    <Stack.Screen name="Main" component={MainNavigator} />
+                ) : (
+                    <Stack.Screen name="Auth" component={AuthNavigator} />
+                )}
+            </Stack.Navigator>
+        </NavigationContainer>
+    );
+};
+
+export default AppNavigator;

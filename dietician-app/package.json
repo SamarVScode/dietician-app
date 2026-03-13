@@ -1,0 +1,16 @@
+{
+  "name": "dietician-app",
+  "private": true,
+  "workspaces": [
+    "dashboard",
+    "mobile",
+    "functions",
+    "shared"
+  ],
+  "scripts": {
+    "dashboard:dev": "npm run dev --workspace=dashboard",
+    "mobile:start": "npm run start --workspace=mobile",
+    "functions:serve": "npm run serve --workspace=functions",
+    "build": "npm run build --workspaces"
+  }
+}
