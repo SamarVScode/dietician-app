@@ -6,4 +6,5 @@ export const ROUTES = {
   ASSIGN_PLAN: '/users/:id/plan',
   USER_REPORTS: '/users/:id/reports',
   TEMPLATES: '/templates',
+  SETTINGS: '/settings',  // ← add this
 }

@@ -10,7 +10,7 @@ import AssignDietPlan from './pages/AssignDietPlan'
 import UserReports from './pages/UserReports'
 import Templates from './pages/Templates'
 import NotFound from './pages/NotFound'
-
+import Settings from './pages/Setting'
 const queryClient = new QueryClient()
 
 export default function App() {
@@ -27,6 +27,7 @@ export default function App() {
           <Route path="/users/:id/reports" element={<ProtectedRoute><UserReports /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}/>
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />
