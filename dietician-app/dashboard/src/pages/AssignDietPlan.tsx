@@ -101,7 +101,6 @@ export default function AssignDietPlan() {
         )
     : []
 
-  // Build 7-day plan from template
   const buildDays = (template: Template) =>
     DAYS.map((dayName, idx) => {
       const override = template.dayOverrides.find((o) => o.dayIndex === idx)
@@ -118,17 +117,22 @@ export default function AssignDietPlan() {
     setIsAssigning(true)
     try {
       const days = buildDays(selectedPlan)
-      await addDoc(collection(db, 'users', id!, 'dietplans'), {
+
+      // ✅ Fixed: correct collection name + status field
+      await addDoc(collection(db, 'users', id!, 'dietPlans'), {
         templateId: selectedPlan.id,
         templateName: selectedPlan.name,
         days,
         assignedAt: new Date().toISOString(),
         assignedBy: 'admin',
+        status: 'active',
       })
+
       await updateDoc(doc(db, 'users', id!), {
         status: 'active',
         updatedAt: new Date().toISOString(),
       })
+
       setAssigned(true)
     } catch (e) {
       console.error(e)
@@ -138,8 +142,6 @@ export default function AssignDietPlan() {
   }
 
   const isLoading = userLoading || templatesLoading
-
-  // ── Loading ──────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -152,8 +154,6 @@ export default function AssignDietPlan() {
       </PageWrapper>
     )
   }
-
-  // ── Success ──────────────────────────────────────────
 
   if (assigned) {
     return (
@@ -178,13 +178,10 @@ export default function AssignDietPlan() {
     )
   }
 
-  // ── Main ─────────────────────────────────────────────
-
   return (
     <PageWrapper title="Assign Diet Plan">
       <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-        {/* Back */}
         <button
           onClick={() => navigate(`/users/${id}`)}
           style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: '#8a9bc4', fontWeight: '600', fontSize: '13px', cursor: 'pointer', width: 'fit-content' }}
@@ -192,7 +189,6 @@ export default function AssignDietPlan() {
           <ArrowLeft size={15} /> Back to Profile
         </button>
 
-        {/* Patient Summary */}
         {user && (
           <div style={{ background: 'white', borderRadius: '20px', padding: '20px 24px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)', display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '800', color: 'white', flexShrink: 0 }}>
@@ -225,7 +221,6 @@ export default function AssignDietPlan() {
           </div>
         )}
 
-        {/* Templates */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
             <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Choose a Template</div>
@@ -240,7 +235,6 @@ export default function AssignDietPlan() {
             Select a saved template to assign to this patient
           </div>
 
-          {/* No Templates */}
           {templates.length === 0 && (
             <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', padding: '48px', textAlign: 'center' }}>
               <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
@@ -257,7 +251,6 @@ export default function AssignDietPlan() {
             </div>
           )}
 
-          {/* Template List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {templates.map((template) => {
               const isSelected = selectedTemplate === template.id
@@ -278,12 +271,10 @@ export default function AssignDietPlan() {
                     </div>
                   )}
 
-                  {/* Template Header Row */}
                   <div
                     onClick={() => setSelectedTemplate(isSelected ? null : template.id)}
                     style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}
                   >
-                    {/* Select Circle */}
                     <div style={{ width: '22px', height: '22px', borderRadius: '50%', border: isSelected ? '2px solid #1a73e8' : '2px solid #e8eef8', background: isSelected ? '#1a73e8' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
                       {isSelected && <Check size={12} color="white" />}
                     </div>
@@ -323,14 +314,12 @@ export default function AssignDietPlan() {
                     </button>
                   </div>
 
-                  {/* Description */}
                   {template.description && (
                     <div style={{ padding: '0 20px 14px 76px', fontSize: '13px', color: '#8a9bc4', fontWeight: '500', lineHeight: 1.5 }}>
                       {template.description}
                     </div>
                   )}
 
-                  {/* Allergen Warning */}
                   {isSelected && allergenWarnings.length > 0 && (
                     <div style={{ margin: '0 20px 14px', padding: '10px 14px', borderRadius: '12px', background: '#fff5f5', border: '1px solid #fed7d7', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <AlertTriangle size={15} color="#e53e3e" />
@@ -340,10 +329,8 @@ export default function AssignDietPlan() {
                     </div>
                   )}
 
-                  {/* 7-Day Preview */}
                   {isExpanded && (
                     <div style={{ borderTop: '1px solid #f0f4ff', background: '#fafcff' }}>
-                      {/* Day tabs */}
                       <div style={{ padding: '14px 20px', display: 'flex', gap: '6px', overflowX: 'auto' as const }}>
                         {days.map((day) => (
                           <button
@@ -359,7 +346,6 @@ export default function AssignDietPlan() {
                         ))}
                       </div>
 
-                      {/* Day Meal Cards */}
                       {expandedDay !== null && (
                         <div style={{ padding: '0 20px 20px' }}>
                           {(() => {

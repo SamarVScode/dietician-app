@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { collection, doc, setDoc } from 'firebase/firestore'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { auth, db } from '../services/firebase'
+import { db } from '../services/firebase'
+// ✅ FIX: Import the isolated helper instead of calling createUserWithEmailAndPassword directly
+import { createAuthUser } from '../utils/createAuthUser'
 import PageWrapper from '../components/layout/PageWrapper'
 import { useSettings } from '../hooks/useSettings'
 import { generateUserId, generatePassword } from '../utils/generateCredentials'
@@ -61,7 +62,6 @@ export default function CreateUser() {
   const [copied, setCopied] = useState(false)
   const [activeStep, setActiveStep] = useState(0)
 
-  // Fetch options from Settings
   const { items: goalItems } = useSettings('goals')
   const { items: preferenceItems } = useSettings('preferences')
   const { items: allergyItems } = useSettings('allergies')
@@ -119,46 +119,60 @@ export default function CreateUser() {
     return Object.keys(newErrors).length === 0
   }
 
+  const createUser = async (attempt = 0): Promise<void> => {
+    if (attempt > 3) throw new Error('Failed to generate unique ID after 3 attempts')
+
+    const userId = generateUserId(form.name)
+    const password = generatePassword()
+    const userEmail = `${userId}@dietapp.com`
+
+    try {
+      // ✅ FIX: Uses secondary app — admin session is NOT disturbed
+      await createAuthUser(userEmail, password)
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        return createUser(attempt + 1)
+      }
+      throw error
+    }
+
+    const bmi = bmiData ? bmiData.value : 0
+    const bmiCategory = bmiData ? bmiData.category : ''
+    const docRef = doc(collection(db, 'users'))
+
+    await setDoc(docRef, {
+      id: docRef.id,
+      name: form.name.trim(),
+      age: parseInt(form.age),
+      gender: form.gender,
+      phone: form.phone,
+      weight: parseFloat(form.weight),
+      height: parseFloat(form.height),
+      bmi,
+      bmiCategory,
+      bodyType: form.bodyType,
+      goal: form.goal,
+      preference: form.preference,
+      allergies: form.allergies,
+      conditions: form.conditions,
+      medications: form.medications,
+      notes: form.notes,
+      userId,
+      userEmail,
+      password,
+      status: 'no-plan',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+
+    setCredentials({ userId, password })
+  }
+
   const handleSubmit = async () => {
     if (!validate()) return
     setIsLoading(true)
     try {
-      const userId = generateUserId(form.name)
-      const password = generatePassword()
-      const userEmail = `${userId.toLowerCase()}@dietapp.com`
-
-      await createUserWithEmailAndPassword(auth, userEmail, password)
-
-      const bmi = bmiData ? bmiData.value : 0
-      const bmiCategory = bmiData ? bmiData.category : ''
-
-      const docRef = doc(collection(db, 'users'))
-      await setDoc(docRef, {
-        id: docRef.id,
-        name: form.name.trim(),
-        age: parseInt(form.age),
-        gender: form.gender,
-        phone: form.phone,
-        weight: parseFloat(form.weight),
-        height: parseFloat(form.height),
-        bmi,
-        bmiCategory,
-        bodyType: form.bodyType,
-        goal: form.goal,
-        preference: form.preference,
-        allergies: form.allergies,
-        conditions: form.conditions,
-        medications: form.medications,
-        notes: form.notes,
-        userId,
-        userEmail,
-        password,
-        status: 'no-plan',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-
-      setCredentials({ userId, password })
+      await createUser()
     } catch (error) {
       console.error('Error creating user:', error)
     } finally {
@@ -173,7 +187,6 @@ export default function CreateUser() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Credentials Modal
   if (credentials) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>

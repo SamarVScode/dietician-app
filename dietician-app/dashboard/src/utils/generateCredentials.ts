@@ -1,7 +1,8 @@
 export function generateUserId(name: string): string {
-  const firstName = name.trim().split(' ')[0].toUpperCase()
+  const firstName = name.trim().split(' ')[0].toLowerCase()
   const year = new Date().getFullYear()
-  return `${firstName}${year}`
+  const suffix = Math.random().toString(36).substring(2, 5).toLowerCase()
+  return `${firstName}${year}${suffix}`
 }
 
 export function generatePassword(): string {
