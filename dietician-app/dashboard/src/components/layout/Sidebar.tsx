@@ -3,11 +3,16 @@ import { signOut } from 'firebase/auth'
 import { auth } from '../../services/firebase'
 import {
   LayoutDashboard, UserPlus, LogOut,
-  Stethoscope, ChevronRight, BookOpen, Settings2,
+  Stethoscope, ChevronRight, BookOpen, Settings2, X,
 } from 'lucide-react'
 import { ROUTES } from '../../constants/routes'
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const navigate = useNavigate()
 
   const handleLogout = async () => {
@@ -20,19 +25,29 @@ export default function Sidebar() {
   }
 
   const navItems = [
-    { to: ROUTES.DASHBOARD, icon: <LayoutDashboard size={17} />, label: 'Dashboard' },
-    { to: ROUTES.CREATE_USER, icon: <UserPlus size={17} />, label: 'Add New Patient' },
-    { to: ROUTES.TEMPLATES, icon: <BookOpen size={17} />, label: 'Diet Templates' },
-    { to: ROUTES.SETTINGS, icon: <Settings2 size={17} />, label: 'Settings' },
+    { to: ROUTES.DASHBOARD,    icon: <LayoutDashboard size={17} />, label: 'Dashboard' },
+    { to: ROUTES.CREATE_USER,  icon: <UserPlus size={17} />,        label: 'Add New Patient' },
+    { to: ROUTES.TEMPLATES,    icon: <BookOpen size={17} />,        label: 'Diet Templates' },
+    { to: ROUTES.SETTINGS,     icon: <Settings2 size={17} />,       label: 'Settings' },
   ]
 
   return (
-    <div style={{ width: '280px', minHeight: '100vh', background: '#ffffff', borderRight: '1px solid #e8eef8', display: 'flex', flexDirection: 'column', boxShadow: '2px 0 12px rgba(31,87,255,0.04)' }}>
-
-      {/* Logo */}
-      <div style={{ padding: '28px 24px 20px', borderBottom: '1px solid #f0f4ff' }}>
+    <div
+      className={`sidebar-root${isOpen ? ' sidebar-open' : ''}`}
+      style={{
+        width: '280px',
+        minHeight: '100vh',
+        background: '#ffffff',
+        borderRight: '1px solid #e8eef8',
+        display: 'flex',
+        flexDirection: 'column',
+        boxShadow: '2px 0 12px rgba(31,87,255,0.04)',
+      }}
+    >
+      {/* Logo + mobile close button */}
+      <div style={{ padding: '20px 24px 20px', borderBottom: '1px solid #f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(26,115,232,0.35)' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(26,115,232,0.35)', flexShrink: 0 }}>
             <Stethoscope size={22} color="white" />
           </div>
           <div>
@@ -40,6 +55,20 @@ export default function Sidebar() {
             <div style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', marginTop: '1px' }}>Dietician Platform</div>
           </div>
         </div>
+
+        {/* Close button — only visible on mobile/tablet via CSS */}
+        <button
+          onClick={onClose}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: '32px', height: '32px', borderRadius: '10px',
+            background: '#f8fafd', border: '1px solid #e8eef8',
+            cursor: 'pointer', flexShrink: 0,
+          }}
+          className="sidebar-close-btn"
+        >
+          <X size={16} color="#8a9bc4" />
+        </button>
       </div>
 
       {/* Nav */}
@@ -52,19 +81,15 @@ export default function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
+            onClick={onClose}
             style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '12px 14px',
-              borderRadius: '14px',
-              textDecoration: 'none',
-              marginBottom: '4px',
+              display: 'flex', alignItems: 'center', gap: '12px',
+              padding: '12px 14px', borderRadius: '14px',
+              textDecoration: 'none', marginBottom: '4px',
               background: isActive ? '#eef3ff' : 'transparent',
               color: isActive ? '#1a73e8' : '#4a5568',
               fontWeight: isActive ? '600' : '500',
-              fontSize: '14px',
-              transition: 'all 0.15s ease',
+              fontSize: '14px', transition: 'all 0.15s ease',
             })}
           >
             {({ isActive }) => (
@@ -80,7 +105,7 @@ export default function Sidebar() {
         ))}
       </div>
 
-      {/* Bottom — Logout only */}
+      {/* Logout */}
       <div style={{ padding: '12px 12px 20px', borderTop: '1px solid #f0f4ff' }}>
         <button
           onClick={handleLogout}

@@ -10,7 +10,7 @@ import { generateUserId, generatePassword } from '../utils/generateCredentials'
 import { calculateBMI } from '../utils/bmi'
 import {
   User, Phone, Weight, Ruler, Target, Salad, Heart,
-  Pill, FileText, ChevronRight, Copy, Check, X,
+  Pill, FileText, ChevronRight, Copy, Check, X, Activity,
 } from 'lucide-react'
 
 const BODY_TYPES = ['Ectomorph', 'Mesomorph', 'Endomorph']
@@ -30,6 +30,14 @@ interface FormData {
   conditions: string[]
   medications: string
   notes: string
+  // Body composition (smart scale — all optional)
+  bodyFatPercent: string
+  muscleMass: string
+  boneMass: string
+  bodyWaterPercent: string
+  visceralFat: string
+  bmr: string
+  metabolicAge: string
 }
 
 interface Credentials {
@@ -51,6 +59,13 @@ const initialForm: FormData = {
   conditions: [],
   medications: '',
   notes: '',
+  bodyFatPercent: '',
+  muscleMass: '',
+  boneMass: '',
+  bodyWaterPercent: '',
+  visceralFat: '',
+  bmr: '',
+  metabolicAge: '',
 }
 
 export default function CreateUser() {
@@ -74,7 +89,7 @@ export default function CreateUser() {
   const CONDITIONS = conditionItems.map((i) => i.name)
   const BODY_TYPE_OPTIONS = bodyTypeItems.length > 0 ? bodyTypeItems.map((i) => i.name) : BODY_TYPES
 
-  const steps = ['Personal Info', 'Body Metrics', 'Diet Info', 'Health Info']
+  const steps = ['Personal Info', 'Body Metrics', 'Diet Info', 'Health Info', 'Body Comp']
 
   const bmiData =
     form.weight && form.height
@@ -157,6 +172,14 @@ export default function CreateUser() {
       conditions: form.conditions,
       medications: form.medications,
       notes: form.notes,
+      // Body composition (smart scale) — stored as numbers, null if not entered
+      bodyFatPercent:   form.bodyFatPercent   ? parseFloat(form.bodyFatPercent)   : null,
+      muscleMass:       form.muscleMass       ? parseFloat(form.muscleMass)       : null,
+      boneMass:         form.boneMass         ? parseFloat(form.boneMass)         : null,
+      bodyWaterPercent: form.bodyWaterPercent ? parseFloat(form.bodyWaterPercent) : null,
+      visceralFat:      form.visceralFat      ? parseFloat(form.visceralFat)      : null,
+      bmr:              form.bmr              ? parseFloat(form.bmr)              : null,
+      metabolicAge:     form.metabolicAge     ? parseInt(form.metabolicAge)       : null,
       userId,
       userEmail,
       password,
@@ -190,7 +213,7 @@ export default function CreateUser() {
   if (credentials) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-        <div style={{ background: 'white', borderRadius: '28px', padding: '40px', width: '440px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+        <div className="creds-modal-box" style={{ background: 'white', borderRadius: '28px', padding: '40px', width: '440px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{ width: '72px', height: '72px', borderRadius: '24px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 8px 24px rgba(26,115,232,0.35)' }}>
               <Check size={36} color="white" />
@@ -267,15 +290,15 @@ export default function CreateUser() {
       <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         {/* Progress Steps */}
-        <div style={{ background: 'white', borderRadius: '20px', padding: '20px 28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="r-card" style={{ background: 'white', borderRadius: '20px', padding: '20px 28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+          <div className="create-steps-row" style={{ display: 'flex', alignItems: 'center' }}>
             {steps.map((step, i) => (
               <div key={step} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: i <= activeStep ? 'linear-gradient(135deg, #1a73e8, #0d47a1)' : '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: i <= activeStep ? 'white' : '#b0bdd8', boxShadow: i <= activeStep ? '0 2px 8px rgba(26,115,232,0.3)' : 'none', flexShrink: 0, transition: 'all 0.2s' }}>
                     {i < activeStep ? <Check size={14} /> : i + 1}
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: i === activeStep ? '700' : '500', color: i === activeStep ? '#1a73e8' : i < activeStep ? '#0d1b3e' : '#b0bdd8', whiteSpace: 'nowrap' }}>{step}</span>
+                  <span className="step-label" style={{ fontSize: '13px', fontWeight: i === activeStep ? '700' : '500', color: i === activeStep ? '#1a73e8' : i < activeStep ? '#0d1b3e' : '#b0bdd8', whiteSpace: 'nowrap' }}>{step}</span>
                 </div>
                 {i < steps.length - 1 && <div style={{ flex: 1, height: '2px', background: i < activeStep ? '#1a73e8' : '#e8eef8', margin: '0 12px', transition: 'background 0.2s' }} />}
               </div>
@@ -284,7 +307,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 1 — Personal Info */}
-        <div style={sectionStyle}>
+        <div className="r-card" style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#eef3ff')}><User size={20} color="#1a73e8" /></div>
             <div>
@@ -293,7 +316,7 @@ export default function CreateUser() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="create-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={labelStyle}>Full Name *</label>
               <input type="text" value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="Enter patient full name" style={inputStyle(!!errors.name)}
@@ -331,7 +354,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 2 — Body Metrics */}
-        <div style={sectionStyle}>
+        <div className="r-card" style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#f0fdfa')}><Weight size={20} color="#0d9488" /></div>
             <div>
@@ -340,7 +363,7 @@ export default function CreateUser() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="create-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
               <label style={labelStyle}><Weight size={13} style={{ display: 'inline', marginRight: '4px' }} />Weight (kg) *</label>
               <input type="number" value={form.weight} onChange={(e) => updateField('weight', e.target.value)} placeholder="e.g. 72" style={inputStyle(!!errors.weight)}
@@ -382,7 +405,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 3 — Diet Info */}
-        <div style={sectionStyle}>
+        <div className="r-card" style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#fefce8')}><Salad size={20} color="#ca8a04" /></div>
             <div>
@@ -421,7 +444,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 4 — Health Info */}
-        <div style={sectionStyle}>
+        <div className="r-card" style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#fff5f5')}><Heart size={20} color="#e53e3e" /></div>
             <div>
@@ -455,8 +478,81 @@ export default function CreateUser() {
           </div>
         </div>
 
+        {/* SECTION 5 — Body Composition (Smart Scale) */}
+        <div className="r-card" style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <div style={sectionIconStyle('#f0fdf4')}><Activity size={20} color="#16a34a" /></div>
+            <div>
+              <div style={{ fontSize: '16px', fontWeight: '700', color: '#0d1b3e' }}>Body Composition</div>
+              <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>Smart scale / body composition monitor readings (optional)</div>
+            </div>
+          </div>
+
+          <div style={{ padding: '12px 16px', borderRadius: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: '12px', fontWeight: '500', color: '#15803d', marginBottom: '20px' }}>
+            All fields are optional. Enter values from the patient's body composition monitor if available.
+          </div>
+
+          <div className="create-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={labelStyle}>Body Fat (%)</label>
+              <input type="number" step="0.1" value={form.bodyFatPercent} onChange={(e) => updateField('bodyFatPercent', e.target.value)} placeholder="e.g. 22.5" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff'; setActiveStep(4) }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Muscle Mass (kg)</label>
+              <input type="number" step="0.1" value={form.muscleMass} onChange={(e) => updateField('muscleMass', e.target.value)} placeholder="e.g. 34.2" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Bone Mass (kg)</label>
+              <input type="number" step="0.1" value={form.boneMass} onChange={(e) => updateField('boneMass', e.target.value)} placeholder="e.g. 2.8" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Body Water (%)</label>
+              <input type="number" step="0.1" value={form.bodyWaterPercent} onChange={(e) => updateField('bodyWaterPercent', e.target.value)} placeholder="e.g. 55.0" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Visceral Fat (level)</label>
+              <input type="number" min="1" max="59" value={form.visceralFat} onChange={(e) => updateField('visceralFat', e.target.value)} placeholder="e.g. 8" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>BMR (kcal/day)</label>
+              <input type="number" value={form.bmr} onChange={(e) => updateField('bmr', e.target.value)} placeholder="e.g. 1680" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Metabolic Age (years)</label>
+              <input type="number" value={form.metabolicAge} onChange={(e) => updateField('metabolicAge', e.target.value)} placeholder="e.g. 30" style={inputStyle(false)}
+                onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Action Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 28px', background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+        <div className="r-save-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 28px', background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
           <button onClick={() => navigate('/dashboard')} style={{ padding: '13px 24px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.borderColor = '#dbe8ff' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = '#f8fafd'; e.currentTarget.style.borderColor = '#e8eef8' }}

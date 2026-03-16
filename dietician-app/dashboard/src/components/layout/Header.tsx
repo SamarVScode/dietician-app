@@ -1,11 +1,12 @@
 import { useAuthStore } from '../../store/authStore'
-import { Bell } from 'lucide-react'
+import { Bell, Menu } from 'lucide-react'
 
 interface HeaderProps {
   title: string
+  onMenuToggle?: () => void
 }
 
-export default function Header({ title }: HeaderProps) {
+export default function Header({ title, onMenuToggle }: HeaderProps) {
   const { user } = useAuthStore()
   const email = user?.email ?? ''
   const avatarLetter = email.charAt(0).toUpperCase()
@@ -19,6 +20,7 @@ export default function Header({ title }: HeaderProps) {
 
   return (
     <div
+      className="header-root"
       style={{
         height: '72px',
         background: '#ffffff',
@@ -28,35 +30,47 @@ export default function Header({ title }: HeaderProps) {
         justifyContent: 'space-between',
         padding: '0 32px',
         boxShadow: '0 1px 8px rgba(31,87,255,0.04)',
+        flexShrink: 0,
       }}
     >
-      {/* Left */}
-      <div>
-        <div
-          style={{
-            fontSize: '20px',
-            fontWeight: '700',
-            color: '#0d1b3e',
-            letterSpacing: '-0.4px',
-          }}
-        >
-          {title}
-        </div>
-        <div
-          style={{
-            fontSize: '12px',
-            color: '#8a9bc4',
-            fontWeight: '500',
-            marginTop: '1px',
-          }}
-        >
-          {today}
+      {/* Left: hamburger (mobile) + title */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+        <button className="header-hamburger" onClick={onMenuToggle} aria-label="Open menu">
+          <Menu size={18} color="#4a5568" />
+        </button>
+
+        <div style={{ minWidth: 0 }}>
+          <div
+            className="header-title"
+            style={{
+              fontSize: '20px',
+              fontWeight: '700',
+              color: '#0d1b3e',
+              letterSpacing: '-0.4px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {title}
+          </div>
+          <div
+            className="header-date"
+            style={{
+              fontSize: '12px',
+              color: '#8a9bc4',
+              fontWeight: '500',
+              marginTop: '1px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {today}
+          </div>
         </div>
       </div>
 
-      {/* Right */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Bell */}
+      {/* Right: bell + admin pill */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
         <div
           style={{
             width: '40px',
@@ -73,7 +87,6 @@ export default function Header({ title }: HeaderProps) {
           <Bell size={17} color="#8a9bc4" />
         </div>
 
-        {/* Admin Pill */}
         <div
           style={{
             display: 'flex',
@@ -98,22 +111,17 @@ export default function Header({ title }: HeaderProps) {
               fontWeight: '700',
               color: 'white',
               boxShadow: '0 2px 8px rgba(26,115,232,0.3)',
+              flexShrink: 0,
             }}
           >
             {avatarLetter}
           </div>
           <div>
-            <div
-              style={{
-                fontSize: '12px',
-                fontWeight: '700',
-                color: '#0d1b3e',
-                lineHeight: 1.2,
-              }}
-            >
+            <div style={{ fontSize: '12px', fontWeight: '700', color: '#0d1b3e', lineHeight: 1.2 }}>
               Admin
             </div>
             <div
+              className="header-admin-email"
               style={{
                 fontSize: '11px',
                 color: '#8a9bc4',

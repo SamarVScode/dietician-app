@@ -1,34 +1,22 @@
 {
-    "expo": {
-        "name": "Dietician Mobile",
-        "slug": "dietician-mobile",
-        "version": "1.0.0",
-        "orientation": "portrait",
-        "icon": "./assets/icon.png",
-        "userInterfaceStyle": "light",
-        "splash": {
-            "image": "./assets/splash.png",
-            "resizeMode": "contain",
-            "backgroundColor": "#ffffff"
-        },
-        "assetBundlePatterns": [
-            "**/*"
-        ],
-        "ios": {
-            "supportsImplicitAdvertisingTracking": false,
-            "bundleIdentifier": "com.dietician.app"
-        },
-        "android": {
-            "adaptiveIcon": {
-                "foregroundImage": "./assets/icon.png",
-                "backgroundColor": "#ffffff"
-            },
-            "package": "com.dietician.app"
-        },
-        "extra": {
-            "eas": {
-                "projectId": "your-project-id"
-            }
-        }
+  "expo": {
+    "name": "Dietician App",
+    "slug": "dietician-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dieticianapp.mobile"
+    },
+    "android": {
+      "package": "com.dieticianapp.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#16a34a"
+      }
+    },
+    "web": {
+      "bundler": "metro"
     }
+  }
 }

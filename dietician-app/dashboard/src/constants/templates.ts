@@ -1,5 +1,5 @@
 // templates.ts - predefined diet plan templates
-import { DietTemplate } from '../types/dietplan.types'
+import type { DietTemplate } from '../types/dietplan.types'
 
 export const DIET_TEMPLATES: DietTemplate[] = [
   {

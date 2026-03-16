@@ -1,16 +1,25 @@
 import { useState } from 'react'
-import { Plus, X, Clock, Flame, ChevronDown, ChevronUp } from 'lucide-react'
-import { DAYS, emptyMeal, mealInputStyle, mealLabelStyle } from './mealUtils'
-import type { Meal, FoodItem, DayOverride } from './mealUtils'
+import { Plus, X, Clock, Flame, ChevronDown, ChevronUp, Copy } from 'lucide-react'
+import { emptyMeal, mealInputStyle, mealLabelStyle } from './mealUtils'
+import type { Meal, FoodItem } from './mealUtils'
 
 export function MealBuilder({
   meals,
   onChange,
+  dayNames,
+  onCopyMealToDays,
+  currentDayIndex,
 }: {
   meals: Meal[]
   onChange: (meals: Meal[]) => void
+  // Optional: if provided, each meal shows a "Copy to days" button
+  dayNames?: string[]
+  onCopyMealToDays?: (meal: Meal, dayIndices: number[]) => void
+  currentDayIndex?: number
 }) {
   const [expandedMeal, setExpandedMeal] = useState<string | null>(meals[0]?.id ?? null)
+  const [copyingMealId, setCopyingMealId] = useState<string | null>(null)
+  const [selectedCopyDays, setSelectedCopyDays] = useState<number[]>([])
 
   const addMeal = () => {
     const m = emptyMeal()
@@ -39,12 +48,35 @@ export function MealBuilder({
       ? { ...m, items: m.items.filter((_, i) => i !== idx) }
       : m))
 
+  const toggleCopyDay = (idx: number) =>
+    setSelectedCopyDays((prev) =>
+      prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
+    )
+
+  const handleCopyMeal = (meal: Meal) => {
+    if (selectedCopyDays.length === 0 || !onCopyMealToDays) return
+    onCopyMealToDays(meal, selectedCopyDays)
+    setCopyingMealId(null)
+    setSelectedCopyDays([])
+  }
+
+  const openCopyPanel = (e: React.MouseEvent, mealId: string) => {
+    e.stopPropagation()
+    if (copyingMealId === mealId) {
+      setCopyingMealId(null)
+      setSelectedCopyDays([])
+    } else {
+      setCopyingMealId(mealId)
+      setSelectedCopyDays([])
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {meals.map((meal, mealIdx) => (
-        <div key={meal.id} style={{ borderRadius: '16px', border: expandedMeal === meal.id ? '2px solid #1a73e8' : '1.5px solid #e8eef8', background: 'white', overflow: 'hidden', transition: 'border 0.15s' }}>
+        <div key={meal.id} style={{ borderRadius: '16px', border: expandedMeal === meal.id ? '2px solid #1a73e8' : '1.5px solid #e8eef8', background: 'white', overflow: 'visible', transition: 'border 0.15s', position: 'relative' as const }}>
           <div onClick={() => setExpandedMeal(expandedMeal === meal.id ? null : meal.id)}
-            style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: expandedMeal === meal.id ? '#fafcff' : 'white' }}>
+            style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: expandedMeal === meal.id ? '#fafcff' : 'white', borderRadius: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '800', color: '#1a73e8', flexShrink: 0 }}>{mealIdx + 1}</div>
               <div>
@@ -56,7 +88,68 @@ export function MealBuilder({
                 </div>
               </div>
             </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* Copy to days button — only shown when dayNames prop is provided */}
+              {dayNames && dayNames.length > 1 && onCopyMealToDays && (
+                <div style={{ position: 'relative' as const }}>
+                  <button
+                    onClick={(e) => openCopyPanel(e, meal.id)}
+                    title="Copy this meal to other days"
+                    style={{ width: '28px', height: '28px', borderRadius: '8px', background: copyingMealId === meal.id ? '#eef3ff' : '#f0f4ff', border: '1px solid #dbe8ff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                    <Copy size={12} color="#1a73e8" />
+                  </button>
+
+                  {copyingMealId === meal.id && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '14px', padding: '14px', zIndex: 30, boxShadow: '0 8px 24px rgba(26,115,232,0.14)', minWidth: '165px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '10px' }}>
+                        Copy to days
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '12px' }}>
+                        {dayNames.map((dayName, idx) => {
+                          const isCurrent = idx === currentDayIndex
+                          const isChecked = selectedCopyDays.includes(idx)
+                          return (
+                            <label
+                              key={idx}
+                              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 4px', cursor: isCurrent ? 'default' : 'pointer', borderRadius: '8px', opacity: isCurrent ? 0.4 : 1 }}
+                              onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = '#f0f4ff' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={isCurrent}
+                                onChange={() => !isCurrent && toggleCopyDay(idx)}
+                                style={{ width: '14px', height: '14px', accentColor: '#1a73e8', cursor: isCurrent ? 'default' : 'pointer' }}
+                              />
+                              <span style={{ fontSize: '13px', fontWeight: '600', color: '#0d1b3e', flex: 1 }}>{dayName.slice(0, 3)}</span>
+                              {isCurrent && <span style={{ fontSize: '10px', color: '#b0bdd8', fontWeight: '500' }}>current</span>}
+                            </label>
+                          )
+                        })}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCopyingMealId(null); setSelectedCopyDays([]) }}
+                          style={{ flex: 1, padding: '7px', borderRadius: '8px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleCopyMeal(meal) }}
+                          disabled={selectedCopyDays.length === 0}
+                          style={{ flex: 1, padding: '7px', borderRadius: '8px', background: selectedCopyDays.length === 0 ? '#e8eef8' : '#1a73e8', border: 'none', color: selectedCopyDays.length === 0 ? '#b0bdd8' : 'white', fontSize: '12px', fontWeight: '700', cursor: selectedCopyDays.length === 0 ? 'not-allowed' : 'pointer' }}>
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {meals.length > 1 && (
                 <button onClick={(e) => { e.stopPropagation(); removeMeal(meal.id) }}
                   style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fff5f5', border: '1px solid #fed7d7', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -117,7 +210,6 @@ export function MealBuilder({
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <label style={{ ...mealLabelStyle, marginBottom: 0 }}>Macros & Calories</label>
-                  <span style={{ fontSize: '10px', fontWeight: '600', color: '#b0bdd8', padding: '2px 8px', borderRadius: '40px', background: '#f8fafd', border: '1px solid #e8eef8' }}>🤖 AI auto-fill coming soon</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
                   {[
@@ -160,74 +252,6 @@ export function MealBuilder({
         onMouseLeave={(e) => { e.currentTarget.style.background = '#f8fafd'; e.currentTarget.style.borderColor = '#dbe8ff' }}>
         <Plus size={16} /> Add Another Meal
       </button>
-    </div>
-  )
-}
-
-export function DayOverridePanel({
-  baseMeals,
-  dayOverrides,
-  onChange,
-}: {
-  baseMeals: Meal[]
-  dayOverrides: DayOverride[]
-  onChange: (overrides: DayOverride[]) => void
-}) {
-  const [activeDay, setActiveDay] = useState<number | null>(null)
-
-  const getOverride = (dayIndex: number) => dayOverrides.find((o) => o.dayIndex === dayIndex)
-
-  const setOverride = (dayIndex: number, meals: Meal[]) => {
-    const exists = dayOverrides.find((o) => o.dayIndex === dayIndex)
-    if (exists) onChange(dayOverrides.map((o) => o.dayIndex === dayIndex ? { ...o, meals } : o))
-    else onChange([...dayOverrides, { dayIndex, meals }])
-  }
-
-  const removeOverride = (dayIndex: number) => {
-    onChange(dayOverrides.filter((o) => o.dayIndex !== dayIndex))
-    if (activeDay === dayIndex) setActiveDay(null)
-  }
-
-  const copyBaseMeals = (dayIndex: number) => {
-    const copied = baseMeals.map((m) => ({ ...m, id: Math.random().toString(36).slice(2), items: m.items.map((i) => ({ ...i })) }))
-    setOverride(dayIndex, copied)
-  }
-
-  return (
-    <div>
-      <div style={{ marginBottom: '12px' }}>
-        <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>Day Overrides</div>
-        <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginTop: '2px' }}>By default all days use the base meals. Override specific days here.</div>
-      </div>
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const, marginBottom: '16px' }}>
-        {DAYS.map((day, idx) => {
-          const hasOverride = !!getOverride(idx)
-          const isActive = activeDay === idx
-          return (
-            <button key={day}
-              onClick={() => { if (isActive) { setActiveDay(null) } else { setActiveDay(idx); if (!hasOverride) copyBaseMeals(idx) } }}
-              style={{ padding: '8px 16px', borderRadius: '40px', border: isActive ? '2px solid #1a73e8' : hasOverride ? '2px solid #f59e0b' : '1.5px solid #e8eef8', background: isActive ? '#eef3ff' : hasOverride ? '#fffbeb' : '#f8fafd', color: isActive ? '#1a73e8' : hasOverride ? '#b45309' : '#4a5568', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {day.slice(0, 3)}
-              {hasOverride && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />}
-            </button>
-          )
-        })}
-      </div>
-      {activeDay !== null && (
-        <div style={{ borderRadius: '16px', border: '1.5px solid #e8eef8', background: '#fafcff', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>{DAYS[activeDay]} — Custom Meals</div>
-              <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>Editing override for {DAYS[activeDay]}</div>
-            </div>
-            <button onClick={() => removeOverride(activeDay)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '10px', background: '#fff5f5', border: '1px solid #fed7d7', color: '#c53030', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-              <X size={12} /> Reset to Base
-            </button>
-          </div>
-          <MealBuilder meals={getOverride(activeDay)?.meals ?? baseMeals} onChange={(meals) => setOverride(activeDay, meals)} />
-        </div>
-      )}
     </div>
   )
 }

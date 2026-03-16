@@ -5,10 +5,10 @@ import { db } from '../services/firebase'
 import PageWrapper from '../components/layout/PageWrapper'
 import { Plus, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, Clock, Flame } from 'lucide-react'
 import { DAYS } from '../components/dietplan/mealUtils'
-import type { TemplateFormData } from '../components/dietplan/mealUtils'
+import type { TemplateFormData, DayPlan } from '../components/dietplan/mealUtils'
 import { emptyTemplateForm } from '../components/dietplan/mealUtils'
 import { TemplateForm } from '../components/dietplan/TemplateForm'
-import type { Meal, DayOverride } from '../components/dietplan/mealUtils'
+import type { Meal } from '../components/dietplan/mealUtils'
 
 interface Template extends TemplateFormData {
   id: string
@@ -28,6 +28,7 @@ export default function Templates() {
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list')
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null)
+  const [previewDay, setPreviewDay] = useState<Record<string, number>>({})
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   const { data: templates = [], isLoading } = useQuery({
@@ -67,7 +68,7 @@ export default function Templates() {
 
   if (mode === 'create' || mode === 'edit') {
     const initial = editingTemplate
-      ? { name: editingTemplate.name, description: editingTemplate.description, targetGoal: editingTemplate.targetGoal, baseMeals: editingTemplate.baseMeals, dayOverrides: editingTemplate.dayOverrides }
+      ? { name: editingTemplate.name, description: editingTemplate.description, targetGoal: editingTemplate.targetGoal, days: editingTemplate.days }
       : emptyTemplateForm()
 
     return (
@@ -103,7 +104,7 @@ export default function Templates() {
         )}
 
         {!isLoading && templates.length === 0 && (
-          <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', padding: '80px 40px', textAlign: 'center', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+          <div className="r-card" style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', padding: '80px 40px', textAlign: 'center', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
             <div style={{ width: '72px', height: '72px', borderRadius: '22px', background: '#f8fafd', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <BookOpen size={30} color="#d0d8f0" />
             </div>
@@ -118,27 +119,26 @@ export default function Templates() {
 
         {!isLoading && templates.map((template) => {
           const isExpanded = expandedTemplate === template.id
-          const totalCals = template.baseMeals.reduce((s: number, m: Meal) => s + (m.calories || 0), 0)
           const gc = goalColors[template.targetGoal] ?? goalColors['General Health']
+          const days: DayPlan[] = template.days ?? []
+          const selectedDayIdx = previewDay[template.id] ?? 0
+          const selectedDay = days[selectedDayIdx]
+          const totalCals = selectedDay?.meals.reduce((s, m) => s + (m.calories || 0), 0) ?? 0
 
           return (
-            <div key={template.id} style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', overflow: 'hidden', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
-              <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div key={template.id} className="r-card" style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', overflow: 'hidden', boxShadow: '0 2px 12px rgba(26,115,232,0.04)', padding: 0 }}>
+              <div className="template-card-header" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: gc.bg, border: `1px solid ${gc.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <BookOpen size={22} color={gc.color} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: '#0d1b3e', marginBottom: '4px' }}>{template.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
+                    <div className="template-card-stats" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
                       <span style={{ padding: '2px 10px', borderRadius: '40px', background: gc.bg, border: `1px solid ${gc.border}`, fontSize: '11px', fontWeight: '700', color: gc.color }}>{template.targetGoal}</span>
-                      <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{template.baseMeals.length} meals/day</span>
-                      {totalCals > 0 && <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Flame size={11} /> {totalCals} kcal/day</span>}
-                      {template.dayOverrides.length > 0 && (
-                        <span style={{ fontSize: '12px', color: '#b45309', fontWeight: '600', background: '#fffbeb', padding: '2px 8px', borderRadius: '40px', border: '1px solid #fde68a' }}>
-                          {template.dayOverrides.length} day override{template.dayOverrides.length !== 1 ? 's' : ''}
-                        </span>
-                      )}
+                      <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>7 days</span>
+                      <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{selectedDay?.meals.length ?? 0} meals/day</span>
+                      {totalCals > 0 && <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Flame size={11} /> {totalCals} kcal</span>}
                     </div>
                   </div>
                 </div>
@@ -163,11 +163,25 @@ export default function Templates() {
               )}
 
               {isExpanded && (
-                <div style={{ borderTop: '1px solid #f0f4ff', padding: '20px 24px', background: '#fafcff' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>Base Meals</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
-                    {template.baseMeals.map((meal: Meal, idx: number) => (
-                      <div key={meal.id} style={{ background: 'white', borderRadius: '14px', padding: '14px', border: '1px solid #e8eef8' }}>
+                <div style={{ borderTop: '1px solid #f0f4ff', background: '#fafcff' }}>
+                  {/* Day tabs */}
+                  <div style={{ padding: '14px 24px 0', display: 'flex', gap: '6px', overflowX: 'auto' as const }}>
+                    {DAYS.map((day, idx) => (
+                      <button key={day}
+                        onClick={() => setPreviewDay((prev) => ({ ...prev, [template.id]: idx }))}
+                        style={{ flexShrink: 0, padding: '7px 14px', borderRadius: '40px', border: selectedDayIdx === idx ? '2px solid #1a73e8' : '1.5px solid #e8eef8', background: selectedDayIdx === idx ? '#eef3ff' : 'white', color: selectedDayIdx === idx ? '#1a73e8' : '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                        {day.slice(0, 3)}
+                        <span style={{ marginLeft: '5px', fontSize: '10px', color: selectedDayIdx === idx ? '#1a73e8' : '#b0bdd8' }}>
+                          {days[idx]?.meals.length ?? 0}m
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Meals for selected day */}
+                  <div className="template-meal-grid" style={{ padding: '16px 24px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                    {(selectedDay?.meals ?? []).map((meal: Meal, idx: number) => (
+                      <div key={meal.id ?? idx} style={{ background: 'white', borderRadius: '14px', padding: '14px', border: '1px solid #e8eef8' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                           <div style={{ fontSize: '13px', fontWeight: '700', color: '#0d1b3e' }}>{meal.name || `Meal ${idx + 1}`}</div>
                           <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {meal.time}</span>
@@ -190,18 +204,6 @@ export default function Templates() {
                       </div>
                     ))}
                   </div>
-                  {template.dayOverrides.length > 0 && (
-                    <div style={{ marginTop: '16px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Day Overrides</div>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
-                        {template.dayOverrides.map((o: DayOverride) => (
-                          <span key={o.dayIndex} style={{ padding: '5px 12px', borderRadius: '40px', background: '#fffbeb', border: '1px solid #fde68a', fontSize: '12px', fontWeight: '600', color: '#b45309' }}>
-                            {DAYS[o.dayIndex]} — {o.meals.length} meals
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -210,7 +212,7 @@ export default function Templates() {
 
         {deleteConfirm && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: 'white', borderRadius: '24px', padding: '36px', width: '380px', textAlign: 'center', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+            <div className="template-modal-box" style={{ background: 'white', borderRadius: '24px', padding: '36px', width: '380px', textAlign: 'center', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
               <div style={{ width: '60px', height: '60px', borderRadius: '20px', background: '#fff5f5', border: '1px solid #fed7d7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                 <Trash2 size={28} color="#e53e3e" />
               </div>

@@ -1,0 +1,1 @@
+{"version":3,"file":"createUserAccount.js","sourceRoot":"","sources":["../../../../src/auth/createUserAccount.ts"],"names":[],"mappings":";;;AAAA,8BAA8B;AAC9B,qDAAqD;AACrD,gDAAgD;AAEnC,QAAA,iBAAiB,GAAG,SAAS,CAAC,KAAK,CAAC,MAAM,CAAC,KAAK,EAAE,IAAI,EAAE,OAAO,EAAE,EAAE;IAC5E,iDAAiD;IACjD,OAAO,EAAE,OAAO,EAAE,IAAI,EAAE,CAAC;AAC7B,CAAC,CAAC,CAAC"}

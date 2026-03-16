@@ -39,8 +39,9 @@ interface Meal {
   notes: string
 }
 
-interface DayOverride {
+interface DayPlan {
   dayIndex: number
+  dayName: string
   meals: Meal[]
 }
 
@@ -49,12 +50,9 @@ interface Template {
   name: string
   description: string
   targetGoal: string
-  baseMeals: Meal[]
-  dayOverrides: DayOverride[]
+  days: DayPlan[]
   createdAt: string
 }
-
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 const goalColors: Record<string, { bg: string; color: string; border: string }> = {
   'Weight Loss': { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
@@ -92,7 +90,8 @@ export default function AssignDietPlan() {
   const selectedPlan = templates.find((t) => t.id === selectedTemplate)
 
   const allergenWarnings = selectedPlan && user
-    ? selectedPlan.baseMeals
+    ? (selectedPlan.days ?? [])
+        .flatMap((d) => d.meals)
         .flatMap((m) => m.items)
         .filter((item) =>
           user.allergies.some((a) =>
@@ -102,15 +101,12 @@ export default function AssignDietPlan() {
     : []
 
   const buildDays = (template: Template) =>
-    DAYS.map((dayName, idx) => {
-      const override = template.dayOverrides.find((o) => o.dayIndex === idx)
-      return {
-        day: idx + 1,
-        dayName,
-        meals: override ? override.meals : template.baseMeals,
-        isOverride: !!override,
-      }
-    })
+    (template.days ?? []).map((d) => ({
+      day: d.dayIndex + 1,
+      dayName: d.dayName,
+      meals: d.meals,
+      isOverride: false,
+    }))
 
   const handleAssign = async () => {
     if (!selectedPlan || !user) return
@@ -158,7 +154,7 @@ export default function AssignDietPlan() {
   if (assigned) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-        <div style={{ background: 'white', borderRadius: '28px', padding: '48px 40px', width: '420px', textAlign: 'center', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+        <div className="creds-modal-box" style={{ background: 'white', borderRadius: '28px', padding: '48px 40px', width: '420px', textAlign: 'center', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
           <div style={{ width: '80px', height: '80px', borderRadius: '28px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', boxShadow: '0 8px 24px rgba(26,115,232,0.35)' }}>
             <Check size={40} color="white" />
           </div>
@@ -257,8 +253,9 @@ export default function AssignDietPlan() {
               const isExpanded = expandedTemplate === template.id
               const isRecommended = user && template.targetGoal === user.goal
               const gc = goalColors[template.targetGoal] ?? goalColors['General Health']
-              const totalCals = template.baseMeals.reduce((s, m) => s + (m.calories || 0), 0)
               const days = buildDays(template)
+              const firstDay = template.days?.[0]
+              const totalCals = (firstDay?.meals ?? []).reduce((s, m) => s + (m.calories || 0), 0)
 
               return (
                 <div
@@ -290,16 +287,14 @@ export default function AssignDietPlan() {
                           {template.targetGoal}
                         </span>
                         <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
-                          {template.baseMeals.length} meals/day
+                          7 days
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
+                          {firstDay?.meals.length ?? 0} meals/day
                         </span>
                         {totalCals > 0 && (
                           <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}>
                             <Flame size={11} /> {totalCals} kcal/day
-                          </span>
-                        )}
-                        {template.dayOverrides.length > 0 && (
-                          <span style={{ fontSize: '11px', color: '#b45309', fontWeight: '600', background: '#fffbeb', padding: '2px 8px', borderRadius: '40px', border: '1px solid #fde68a' }}>
-                            {template.dayOverrides.length} day override{template.dayOverrides.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </div>
@@ -404,7 +399,7 @@ export default function AssignDietPlan() {
         </div>
 
         {/* Action Bar */}
-        <div style={{ background: 'white', borderRadius: '20px', padding: '20px 28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="r-save-bar assign-bottom-bar" style={{ background: 'white', borderRadius: '20px', padding: '20px 28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             {selectedPlan ? (
               <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>

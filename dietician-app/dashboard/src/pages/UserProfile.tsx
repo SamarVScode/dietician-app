@@ -8,9 +8,9 @@ import {
 import { db } from '../services/firebase'
 import PageWrapper from '../components/layout/PageWrapper'
 import { useSettings } from '../hooks/useSettings'
-import { MealBuilder, DayOverridePanel } from '../components/dietplan/MealBuilder'
-import { emptyMeal, DAYS } from '../components/dietplan/mealUtils'
-import type { Meal, DayOverride, TemplateFormData } from '../components/dietplan/mealUtils'
+import { MealBuilder } from '../components/dietplan/MealBuilder'
+import { emptyMeal, DAYS, cloneMeals as cloneMealsUtil } from '../components/dietplan/mealUtils'
+import type { Meal, DayPlan as MealDayPlan, TemplateFormData } from '../components/dietplan/mealUtils'
 import {
   User, Phone, Target, Salad, Heart, Pill, FileText,
   ArrowLeft, Edit2, Save, X, Eye, EyeOff, Copy, Check,
@@ -30,6 +30,14 @@ interface UserData {
   allergies: string[]; conditions: string[]; medications: string
   notes: string; userId: string; userEmail: string; password?: string
   status: string; createdAt: string; updatedAt: string
+  // Body composition (smart scale — optional)
+  bodyFatPercent?: number | null
+  muscleMass?: number | null
+  boneMass?: number | null
+  bodyWaterPercent?: number | null
+  visceralFat?: number | null
+  bmr?: number | null
+  metabolicAge?: number | null
 }
 
 interface DayPlan { day: number; dayName: string; meals: Meal[]; isOverride: boolean }
@@ -43,10 +51,8 @@ interface Template extends TemplateFormData {
   id: string; createdAt: string; updatedAt: string
 }
 
-// Deep clone meals — each day must be an independent object in Firestore,
-// not a shared reference. Without this, all days mutate together.
-const cloneMeals = (meals: Meal[]): Meal[] =>
-  meals.map((m) => ({ ...m, id: Math.random().toString(36).slice(2), items: m.items.map((i) => ({ ...i })) }))
+// Re-export so usage below stays consistent
+const cloneMeals = cloneMealsUtil
 
 const goalColors: Record<string, { bg: string; color: string; border: string }> = {
   'Weight Loss':     { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
@@ -88,16 +94,20 @@ export default function UserProfile() {
   const [isAssigning, setIsAssigning]               = useState(false)
   const [assignSuccess, setAssignSuccess]           = useState(false)
 
-  // Custom plan state — separate base meals + overrides (fixes multiple meals bug)
+  // Custom plan state — 7 independent days
   const [customPlanName, setCustomPlanName]       = useState('')
-  const [customBaseMeals, setCustomBaseMeals]     = useState<Meal[]>([emptyMeal()])
-  const [customOverrides, setCustomOverrides]     = useState<DayOverride[]>([])
+  const [customDays, setCustomDays]               = useState<MealDayPlan[]>(() => DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] })))
+  const [customActiveDay, setCustomActiveDay]     = useState(0)
+  const [showCustomCopyFrom, setShowCustomCopyFrom] = useState(false)
   const [isSavingCustom, setIsSavingCustom]       = useState(false)
 
-  // Edit existing plan state
-  const [editBaseMeals, setEditBaseMeals]         = useState<Meal[]>([])
-  const [editOverrides, setEditOverrides]         = useState<DayOverride[]>([])
+  // Edit existing plan state — 7 independent days
+  const [editDays, setEditDays]                   = useState<MealDayPlan[]>([])
+  const [editActiveDay, setEditActiveDay]         = useState(0)
+  const [showEditCopyFrom, setShowEditCopyFrom]   = useState(false)
   const [isSavingEdit, setIsSavingEdit]           = useState(false)
+  const [showDeletePlanModal, setShowDeletePlanModal] = useState(false)
+  const [isDeletingPlan, setIsDeletingPlan]           = useState(false)
 
   const { items: goalItems }       = useSettings('goals')
   const { items: preferenceItems } = useSettings('preferences')
@@ -182,23 +192,15 @@ export default function UserProfile() {
 
   const selectedPlan = templates.find((t) => t.id === selectedTemplateId)
   const allergenWarnings = selectedPlan && user
-    ? selectedPlan.baseMeals.flatMap((m) => m.items).filter((item) =>
+    ? (selectedPlan.days ?? []).flatMap((d) => d.meals).flatMap((m) => m.items).filter((item) =>
         user.allergies.some((a) => item.name.toLowerCase().includes(a.toLowerCase())))
     : []
 
-  // Build day array from template — each day gets independently cloned meals
+  // Build day array from template — map template.days directly
   const buildDaysFromTemplate = (template: Template): DayPlan[] =>
-    DAYS.map((dayName: string, idx: number) => {
-      const override = template.dayOverrides.find((o) => o.dayIndex === idx)
-      return { day: idx + 1, dayName, meals: cloneMeals(override ? override.meals : template.baseMeals), isOverride: !!override }
-    })
-
-  // Build day array from base meals + overrides — each day independently cloned
-  const buildDaysFromCustom = (baseMeals: Meal[], overrides: DayOverride[]): DayPlan[] =>
-    DAYS.map((dayName: string, idx: number) => {
-      const override = overrides.find((o) => o.dayIndex === idx)
-      return { day: idx + 1, dayName, meals: cloneMeals(override ? override.meals : baseMeals), isOverride: !!override }
-    })
+    (template.days ?? []).map((d) => ({
+      day: d.dayIndex + 1, dayName: d.dayName, meals: cloneMeals(d.meals), isOverride: false,
+    }))
 
   const handleAssignTemplate = async () => {
     if (!selectedPlan || !user) return
@@ -223,7 +225,7 @@ export default function UserProfile() {
     try {
       await addDoc(collection(db, 'users', id!, 'dietPlans'), {
         templateId: null, templateName: customPlanName.trim(),
-        days: buildDaysFromCustom(customBaseMeals, customOverrides),
+        days: customDays.map((d) => ({ day: d.dayIndex + 1, dayName: d.dayName, meals: cloneMeals(d.meals), isOverride: false })),
         assignedAt: new Date().toISOString(), assignedBy: 'admin', status: 'active',
       })
       await updateDoc(doc(db, 'users', id!), { status: 'active', updatedAt: new Date().toISOString() })
@@ -236,13 +238,12 @@ export default function UserProfile() {
 
   const handleStartEditPlan = () => {
     if (!activePlan) return
-    const day1 = activePlan.days.find((d) => d.day === 1)
-    const baseMeals = cloneMeals(day1?.meals ?? [emptyMeal()])
-    const overrides: DayOverride[] = activePlan.days
-      .filter((d) => d.isOverride)
-      .map((d) => ({ dayIndex: d.day - 1, meals: cloneMeals(d.meals) }))
-    setEditBaseMeals(baseMeals)
-    setEditOverrides(overrides)
+    const days: MealDayPlan[] = DAYS.map((dayName, dayIndex) => {
+      const existing = activePlan.days.find((d) => d.day === dayIndex + 1)
+      return { dayIndex, dayName, meals: cloneMeals(existing?.meals ?? [emptyMeal()]) }
+    })
+    setEditDays(days)
+    setEditActiveDay(0)
     setPlanMode('edit')
   }
 
@@ -251,7 +252,7 @@ export default function UserProfile() {
     setIsSavingEdit(true)
     try {
       await updateDoc(doc(db, 'users', id!, 'dietPlans', activePlan.id), {
-        days: buildDaysFromCustom(editBaseMeals, editOverrides),
+        days: editDays.map((d) => ({ day: d.dayIndex + 1, dayName: d.dayName, meals: cloneMeals(d.meals), isOverride: false })),
         updatedAt: new Date().toISOString(),
       })
       queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
@@ -260,11 +261,63 @@ export default function UserProfile() {
     finally { setIsSavingEdit(false) }
   }
 
+  const handleDeletePlan = async () => {
+    if (!activePlan) return
+    setIsDeletingPlan(true)
+    try {
+      await deleteDoc(doc(db, 'users', id!, 'dietPlans', activePlan.id))
+      await updateDoc(doc(db, 'users', id!), { status: 'no-plan', updatedAt: new Date().toISOString() })
+      queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
+      queryClient.invalidateQueries({ queryKey: ['user', id] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setShowDeletePlanModal(false)
+    } catch (e) { console.error(e) }
+    finally { setIsDeletingPlan(false) }
+  }
+
   const resetPlanMode = () => {
     setPlanMode('idle'); setSelectedTemplateId(null)
     setExpandedTemplateId(null); setExpandedDay(null); setViewDay(1)
-    setCustomPlanName(''); setCustomBaseMeals([emptyMeal()]); setCustomOverrides([])
-    setEditBaseMeals([]); setEditOverrides([])
+    setCustomPlanName(''); setCustomDays(DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] }))); setCustomActiveDay(0); setShowCustomCopyFrom(false)
+    setEditDays([]); setEditActiveDay(0); setShowEditCopyFrom(false)
+  }
+
+  const updateEditDayMeals = (dayIndex: number, meals: Meal[]) =>
+    setEditDays((prev) => prev.map((d) => d.dayIndex === dayIndex ? { ...d, meals } : d))
+
+  const updateCustomDayMeals = (dayIndex: number, meals: Meal[]) =>
+    setCustomDays((prev) => prev.map((d) => d.dayIndex === dayIndex ? { ...d, meals } : d))
+
+  const applyEditDayToAll = () => {
+    const meals = editDays[editActiveDay]?.meals ?? []
+    setEditDays((prev) => prev.map((d) => ({ ...d, meals: cloneMeals(meals) })))
+  }
+
+  const copyEditDayFrom = (fromIdx: number) => {
+    updateEditDayMeals(editActiveDay, cloneMeals(editDays[fromIdx]?.meals ?? []))
+    setShowEditCopyFrom(false)
+  }
+
+  const applyCustomDayToAll = () => {
+    const meals = customDays[customActiveDay]?.meals ?? []
+    setCustomDays((prev) => prev.map((d) => ({ ...d, meals: cloneMeals(meals) })))
+  }
+
+  const copyCustomDayFrom = (fromIdx: number) => {
+    updateCustomDayMeals(customActiveDay, cloneMeals(customDays[fromIdx]?.meals ?? []))
+    setShowCustomCopyFrom(false)
+  }
+
+  const copyMealToEditDays = (meal: Meal, dayIndices: number[]) => {
+    setEditDays((prev) => prev.map((d) =>
+      dayIndices.includes(d.dayIndex) ? { ...d, meals: [...d.meals, { ...meal, id: Math.random().toString(36).slice(2), items: meal.items.map((i) => ({ ...i })) }] } : d
+    ))
+  }
+
+  const copyMealToCustomDays = (meal: Meal, dayIndices: number[]) => {
+    setCustomDays((prev) => prev.map((d) =>
+      dayIndices.includes(d.dayIndex) ? { ...d, meals: [...d.meals, { ...meal, id: Math.random().toString(36).slice(2), items: meal.items.map((i) => ({ ...i })) }] } : d
+    ))
   }
 
   const tabStyle = (key: TabKey) => ({
@@ -330,19 +383,39 @@ export default function UserProfile() {
           </div>
         )}
 
+        {/* Delete Plan Modal */}
+        {showDeletePlanModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: 'white', borderRadius: '24px', padding: '36px', width: '400px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+              <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: '#fff5f5', border: '2px solid #fed7d7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><UtensilsCrossed size={28} color="#e53e3e" /></div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#0d1b3e', marginBottom: '8px' }}>Remove Diet Plan?</div>
+                <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500', lineHeight: '1.5' }}>This will remove <strong style={{ color: '#0d1b3e' }}>{activePlan?.templateName}</strong> from {user.name}'s profile. The patient's status will change to "No Plan".</div>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setShowDeletePlanModal(false)} style={{ flex: 1, padding: '12px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={handleDeletePlan} disabled={isDeletingPlan} style={{ flex: 1, padding: '12px', borderRadius: '14px', background: 'linear-gradient(135deg, #e53e3e, #c53030)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: isDeletingPlan ? 'not-allowed' : 'pointer', opacity: isDeletingPlan ? 0.7 : 1 }}>
+                  {isDeletingPlan ? 'Removing...' : 'Remove Plan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <button onClick={() => navigate('/dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: '#8a9bc4', fontWeight: '600', fontSize: '13px', cursor: 'pointer', width: 'fit-content', padding: '4px 0' }}>
           <ArrowLeft size={15} /> Back to Dashboard
         </button>
 
         {/* Header */}
-        <div style={{ background: 'white', borderRadius: '20px', padding: '28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ width: '72px', height: '72px', borderRadius: '22px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: '800', color: 'white', boxShadow: '0 4px 16px rgba(26,115,232,0.3)', flexShrink: 0 }}>
+        <div className="r-card" style={{ background: 'white', borderRadius: '20px', padding: '28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+          <div className="profile-header-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="profile-header-avatar-row" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div className="profile-avatar" style={{ width: '72px', height: '72px', borderRadius: '22px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: '800', color: 'white', boxShadow: '0 4px 16px rgba(26,115,232,0.3)', flexShrink: 0 }}>
               {user.name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: '22px', fontWeight: '800', color: '#0d1b3e', letterSpacing: '-0.5px', marginBottom: '6px' }}>{user.name}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
+              <div className="profile-name" style={{ fontSize: '22px', fontWeight: '800', color: '#0d1b3e', letterSpacing: '-0.5px', marginBottom: '6px' }}>{user.name}</div>
+              <div className="profile-header-meta" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
                 <span style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>{user.userId}</span>
                 <span style={{ color: '#e2e8f0' }}>·</span>
                 <span style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>{user.age} yrs · {user.gender}</span>
@@ -353,50 +426,51 @@ export default function UserProfile() {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
-            {!isEditing ? (
-              <>
-                <button onClick={() => setShowDeleteModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: '#fff5f5', border: '1px solid #fed7d7', color: '#e53e3e', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                  <Trash2 size={15} /> Delete
-                </button>
+          <div className="profile-header-actions" style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+            <button onClick={() => setShowDeleteModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: '#fff5f5', border: '1px solid #fed7d7', color: '#e53e3e', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+              <Trash2 size={15} /> Delete
+            </button>
+            {activeTab === 'profile' && (
+              isEditing ? (
+                <>
+                  <button onClick={handleCancel} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                    <X size={15} /> Cancel
+                  </button>
+                  <button onClick={handleSave} disabled={updateMutation.isPending} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 3px 12px rgba(26,115,232,0.3)' }}>
+                    <Save size={15} /> {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              ) : (
                 <button onClick={handleEdit} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 3px 12px rgba(26,115,232,0.3)' }}>
-                  <Edit2 size={15} /> Edit
+                  <Edit2 size={15} /> Edit Profile
                 </button>
-              </>
-            ) : (
-              <>
-                <button onClick={handleCancel} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                  <X size={15} /> Cancel
-                </button>
-                <button onClick={handleSave} disabled={updateMutation.isPending} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 3px 12px rgba(26,115,232,0.3)' }}>
-                  <Save size={15} /> {updateMutation.isPending ? 'Saving...' : 'Save'}
-                </button>
-              </>
+              )
             )}
+          </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px', boxShadow: '0 2px 8px rgba(26,115,232,0.04)' }}>
+        <div className="profile-tabs-row" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px', boxShadow: '0 2px 8px rgba(26,115,232,0.04)' }}>
           {([
             { key: 'profile' as TabKey,     label: 'Profile Info',  icon: <User size={14} /> },
             { key: 'dietplan' as TabKey,    label: 'Diet Plan',     icon: <UtensilsCrossed size={14} /> },
             { key: 'reports' as TabKey,     label: 'Reports',       icon: <Activity size={14} /> },
             { key: 'credentials' as TabKey, label: 'Credentials',   icon: <KeyRound size={14} /> },
           ]).map((tab) => (
-            <button key={tab.key} onClick={() => { setActiveTab(tab.key); if (tab.key === 'dietplan') resetPlanMode() }} style={tabStyle(tab.key)}>{tab.icon} {tab.label}</button>
+            <button key={tab.key} onClick={() => { setActiveTab(tab.key); if (tab.key === 'dietplan') resetPlanMode(); if (tab.key !== 'profile') handleCancel() }} style={tabStyle(tab.key)}>{tab.icon} {tab.label}</button>
           ))}
         </div>
 
         {/* ═══════ PROFILE TAB ═══════ */}
         {activeTab === 'profile' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={cardStyle}>
+            <div className="r-card" style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={17} color="#1a73e8" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Personal Information</div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+              <div className="profile-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <div style={labelStyle}>Full Name</div>
                   {isEditing ? <input style={inputStyle} value={editForm.name ?? ''} onChange={(e) => updateEdit('name', e.target.value)} onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }} onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }} /> : <div style={valueStyle}>{user.name}</div>}
@@ -407,12 +481,12 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div style={cardStyle}>
+            <div className="r-card" style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>⚖️</div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Body Metrics</div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px' }}>
+              <div className="profile-grid-4" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px' }}>
                 <div><div style={labelStyle}>Weight (kg)</div>{isEditing ? <input type="number" style={inputStyle} value={editForm.weight ?? ''} onChange={(e) => updateEdit('weight', e.target.value)} onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }} onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }} /> : <div style={valueStyle}>{user.weight} kg</div>}</div>
                 <div><div style={labelStyle}>Height (cm)</div>{isEditing ? <input type="number" style={inputStyle} value={editForm.height ?? ''} onChange={(e) => updateEdit('height', e.target.value)} onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }} onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }} /> : <div style={valueStyle}>{user.height} cm</div>}</div>
                 <div><div style={labelStyle}>BMI</div><div style={{ fontSize: '22px', fontWeight: '800', color: '#1a73e8' }}>{user.bmi}</div></div>
@@ -421,12 +495,12 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div style={cardStyle}>
+            <div className="r-card" style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fefce8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Salad size={17} color="#ca8a04" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Diet Information</div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="profile-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div><div style={labelStyle}>Goal</div>{isEditing ? <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>{GOALS.map((g) => <button key={g} type="button" onClick={() => updateEdit('goal', g)} style={chipStyle((editForm.goal ?? user.goal) === g)}>{g}</button>)}</div> : <div style={{ ...valueStyle, display: 'flex', alignItems: 'center', gap: '6px' }}><Target size={14} color="#8a9bc4" /> {user.goal}</div>}</div>
                 <div><div style={labelStyle}>Food Preference</div>{isEditing ? <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>{PREFERENCES.map((p) => <button key={p} type="button" onClick={() => updateEdit('preference', p)} style={chipStyle((editForm.preference ?? user.preference) === p)}>{p}</button>)}</div> : <div style={valueStyle}>{user.preference}</div>}</div>
                 <div style={{ gridColumn: '1 / -1' }}>
@@ -437,7 +511,56 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div style={cardStyle}>
+            <div className="r-card" style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={17} color="#16a34a" /></div>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Body Composition</div>
+              </div>
+              {([
+                { key: 'bodyFatPercent',   label: 'Body Fat',      unit: '%',        placeholder: 'e.g. 22.5' },
+                { key: 'muscleMass',       label: 'Muscle Mass',   unit: 'kg',       placeholder: 'e.g. 34.2' },
+                { key: 'boneMass',         label: 'Bone Mass',     unit: 'kg',       placeholder: 'e.g. 2.8'  },
+                { key: 'bodyWaterPercent', label: 'Body Water',    unit: '%',        placeholder: 'e.g. 55.0' },
+                { key: 'visceralFat',      label: 'Visceral Fat',  unit: 'level',    placeholder: 'e.g. 8'    },
+                { key: 'bmr',              label: 'BMR',           unit: 'kcal/day', placeholder: 'e.g. 1680' },
+                { key: 'metabolicAge',     label: 'Metabolic Age', unit: 'yrs',      placeholder: 'e.g. 30'   },
+              ] as { key: keyof UserData; label: string; unit: string; placeholder: string }[]).some(
+                (f) => user[f.key] != null
+              ) || isEditing ? (
+                <div className="profile-grid-4" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px' }}>
+                  {([
+                    { key: 'bodyFatPercent',   label: 'Body Fat',      unit: '%',        placeholder: 'e.g. 22.5', step: '0.1' },
+                    { key: 'muscleMass',       label: 'Muscle Mass',   unit: 'kg',       placeholder: 'e.g. 34.2', step: '0.1' },
+                    { key: 'boneMass',         label: 'Bone Mass',     unit: 'kg',       placeholder: 'e.g. 2.8',  step: '0.1' },
+                    { key: 'bodyWaterPercent', label: 'Body Water',    unit: '%',        placeholder: 'e.g. 55.0', step: '0.1' },
+                    { key: 'visceralFat',      label: 'Visceral Fat',  unit: 'level',    placeholder: 'e.g. 8',    step: '1'   },
+                    { key: 'bmr',              label: 'BMR',           unit: 'kcal/day', placeholder: 'e.g. 1680', step: '1'   },
+                    { key: 'metabolicAge',     label: 'Metabolic Age', unit: 'yrs',      placeholder: 'e.g. 30',   step: '1'   },
+                  ] as { key: keyof UserData; label: string; unit: string; placeholder: string; step: string }[]).map((f) => (
+                    <div key={f.key}>
+                      <div style={labelStyle}>{f.label}</div>
+                      {isEditing ? (
+                        <input type="number" step={f.step} style={inputStyle}
+                          value={editForm[f.key] != null ? String(editForm[f.key]) : user[f.key] != null ? String(user[f.key]) : ''}
+                          placeholder={f.placeholder}
+                          onChange={(e) => updateEdit(f.key, e.target.value === '' ? '' : parseFloat(e.target.value) as any)}
+                          onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                          onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                        />
+                      ) : (
+                        <div style={valueStyle}>{user[f.key] != null ? `${user[f.key]} ${f.unit}` : '—'}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: '#b0bdd8', fontSize: '13px', fontWeight: '500' }}>
+                  No body composition data recorded. Click <strong>Edit Profile</strong> to add.
+                </div>
+              )}
+            </div>
+
+            <div className="r-card" style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fff5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Heart size={17} color="#e53e3e" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Health Information</div>
@@ -465,7 +588,7 @@ export default function UserProfile() {
 
             {/* ── IDLE: view current plan or assign ── */}
             {planMode === 'idle' && (
-              <div style={cardStyle}>
+              <div className="r-card" style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fefce8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UtensilsCrossed size={17} color="#ca8a04" /></div>
@@ -475,10 +598,16 @@ export default function UserProfile() {
                     </div>
                   </div>
                   {activePlan && (
-                    <button onClick={handleStartEditPlan}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#eef3ff', border: '1px solid #dbe8ff', color: '#1a73e8', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                      <Edit2 size={14} /> Edit Plan
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => setShowDeletePlanModal(true)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#fff5f5', border: '1px solid #fed7d7', color: '#e53e3e', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                        <Trash2 size={14} /> Remove
+                      </button>
+                      <button onClick={handleStartEditPlan}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#eef3ff', border: '1px solid #dbe8ff', color: '#1a73e8', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                        <Edit2 size={14} /> Edit Plan
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -516,7 +645,7 @@ export default function UserProfile() {
 
                     {/* Meals for selected day */}
                     {viewDayPlan && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                      <div className="meal-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
                         {viewDayPlan.meals.map((meal: Meal, idx: number) => (
                           <div key={meal.id ?? idx} style={{ background: '#f8fafd', borderRadius: '16px', padding: '16px', border: '1px solid #e8eef8' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -559,32 +688,81 @@ export default function UserProfile() {
 
             {/* ── EDIT existing plan ── */}
             {planMode === 'edit' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Edit: {activePlan?.templateName}</div>
-                    <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500', marginTop: '2px' }}>Edit base meals, then override specific days if needed</div>
+                    <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500', marginTop: '2px' }}>Edit any day's meals directly</div>
                   </div>
                   <button onClick={resetPlanMode} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#f8fafd', border: '1.5px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                     <X size={13} /> Cancel
                   </button>
                 </div>
 
-                <div style={cardStyle}>
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e', marginBottom: '4px' }}>Base Meals</div>
-                    <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>Applied to all days unless overridden below.</div>
+                {/* Day tabs */}
+                <div className="plan-day-tabs" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px' }}>
+                  {DAYS.map((day, idx) => {
+                    const isActive = editActiveDay === idx
+                    const mealCount = editDays[idx]?.meals.length ?? 0
+                    return (
+                      <button key={day} onClick={() => { setEditActiveDay(idx); setShowEditCopyFrom(false) }}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <span>{day.slice(0, 3)}</span>
+                        <span style={{ fontSize: '10px', fontWeight: '600', opacity: 0.75 }}>{mealCount}m</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Actions bar */}
+                <div className="plan-actions-bar" style={{ background: 'white', borderRadius: '14px', padding: '12px 16px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>
+                    {DAYS[editActiveDay]}
+                    <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginLeft: '8px' }}>
+                      {editDays[editActiveDay]?.meals.length ?? 0} meal{(editDays[editActiveDay]?.meals.length ?? 0) !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <MealBuilder meals={editBaseMeals} onChange={setEditBaseMeals} />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={applyEditDayToAll}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#eef3ff', border: '1px solid #dbe8ff', color: '#1a73e8', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                      <Copy size={12} /> Apply to all days
+                    </button>
+                    <div style={{ position: 'relative' as const }}>
+                      <button onClick={() => setShowEditCopyFrom(!showEditCopyFrom)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                        Copy from <ChevronDown size={12} />
+                      </button>
+                      {showEditCopyFrom && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
+                          {DAYS.map((day, idx) => idx !== editActiveDay && (
+                            <button key={day} onClick={() => copyEditDayFrom(idx)}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                              <span>{day}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{editDays[idx]?.meals.length}m</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div style={cardStyle}>
-                  <DayOverridePanel baseMeals={editBaseMeals} dayOverrides={editOverrides} onChange={setEditOverrides} />
+                <div className="r-card" style={cardStyle}>
+                  <MealBuilder
+                    key={editActiveDay}
+                    meals={editDays[editActiveDay]?.meals ?? []}
+                    onChange={(meals) => updateEditDayMeals(editActiveDay, meals)}
+                    dayNames={DAYS}
+                    currentDayIndex={editActiveDay}
+                    onCopyMealToDays={copyMealToEditDays}
+                  />
                 </div>
 
-                <div style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+                <div className="r-save-bar" style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                   <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
-                    {editBaseMeals.length} base meal{editBaseMeals.length !== 1 ? 's' : ''} · {editOverrides.length} day override{editOverrides.length !== 1 ? 's' : ''}
+                    7 days · {editDays.reduce((s, d) => s + d.meals.length, 0)} total meals
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={resetPlanMode} style={{ padding: '11px 20px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
@@ -630,7 +808,8 @@ export default function UserProfile() {
                   const isSelected = selectedTemplateId === template.id
                   const isExpanded = expandedTemplateId === template.id
                   const gc = goalColors[template.targetGoal] ?? goalColors['General Health']
-                  const totalCals = template.baseMeals.reduce((s: number, m: Meal) => s + (m.calories || 0), 0)
+                  const firstDayMeals = template.days?.[0]?.meals ?? []
+                  const totalCals = firstDayMeals.reduce((s: number, m: Meal) => s + (m.calories || 0), 0)
                   const days = buildDaysFromTemplate(template)
 
                   return (
@@ -649,7 +828,7 @@ export default function UserProfile() {
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e', marginBottom: '4px' }}>{template.name}</div>
                           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const, alignItems: 'center' }}>
                             <span style={{ padding: '2px 8px', borderRadius: '40px', background: gc.bg, border: `1px solid ${gc.border}`, fontSize: '11px', fontWeight: '700', color: gc.color }}>{template.targetGoal}</span>
-                            <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{template.baseMeals.length} meals/day</span>
+                            <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{firstDayMeals.length} meals/day</span>
                             {totalCals > 0 && <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Flame size={11} /> {totalCals} kcal/day</span>}
                           </div>
                         </div>
@@ -715,7 +894,7 @@ export default function UserProfile() {
                 })}
 
                 {templates.length > 0 && (
-                  <div style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+                  <div className="r-save-bar" style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                     <div style={{ fontSize: '14px', color: selectedTemplateId ? '#0d1b3e' : '#b0bdd8', fontWeight: selectedTemplateId ? '700' : '500' }}>
                       {selectedTemplateId ? <>Selected: <span style={{ color: '#1a73e8' }}>{templates.find((t) => t.id === selectedTemplateId)?.name}</span></> : 'No template selected'}
                     </div>
@@ -733,7 +912,7 @@ export default function UserProfile() {
 
             {/* ── CUSTOM PLAN MODE ── */}
             {planMode === 'custom' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Create Custom Plan</div>
@@ -744,7 +923,7 @@ export default function UserProfile() {
                   </button>
                 </div>
 
-                <div style={cardStyle}>
+                <div className="r-card" style={cardStyle}>
                   <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '8px', display: 'block' }}>Plan Name *</label>
                   <input value={customPlanName} onChange={(e) => setCustomPlanName(e.target.value)}
                     placeholder={`e.g. ${user.name}'s ${user.goal} Plan`}
@@ -754,23 +933,71 @@ export default function UserProfile() {
                   />
                 </div>
 
-                <div style={cardStyle}>
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e', marginBottom: '4px' }}>Base Meals</div>
-                    <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>Applied to all 7 days unless overridden below.</div>
+                {/* Day tabs */}
+                <div className="plan-day-tabs" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px' }}>
+                  {DAYS.map((day, idx) => {
+                    const isActive = customActiveDay === idx
+                    const mealCount = customDays[idx]?.meals.length ?? 0
+                    return (
+                      <button key={day} onClick={() => { setCustomActiveDay(idx); setShowCustomCopyFrom(false) }}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <span>{day.slice(0, 3)}</span>
+                        <span style={{ fontSize: '10px', fontWeight: '600', opacity: 0.75 }}>{mealCount}m</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Actions bar */}
+                <div className="plan-actions-bar" style={{ background: 'white', borderRadius: '14px', padding: '12px 16px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>
+                    {DAYS[customActiveDay]}
+                    <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginLeft: '8px' }}>
+                      {customDays[customActiveDay]?.meals.length ?? 0} meal{(customDays[customActiveDay]?.meals.length ?? 0) !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <MealBuilder meals={customBaseMeals} onChange={setCustomBaseMeals} />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={applyCustomDayToAll}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#eef3ff', border: '1px solid #dbe8ff', color: '#1a73e8', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                      <Copy size={12} /> Apply to all days
+                    </button>
+                    <div style={{ position: 'relative' as const }}>
+                      <button onClick={() => setShowCustomCopyFrom(!showCustomCopyFrom)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                        Copy from <ChevronDown size={12} />
+                      </button>
+                      {showCustomCopyFrom && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
+                          {DAYS.map((day, idx) => idx !== customActiveDay && (
+                            <button key={day} onClick={() => copyCustomDayFrom(idx)}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                              <span>{day}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{customDays[idx]?.meals.length}m</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Day overrides — now included in custom plan */}
-                <div style={cardStyle}>
-                  <DayOverridePanel baseMeals={customBaseMeals} dayOverrides={customOverrides} onChange={setCustomOverrides} />
+                <div className="r-card" style={cardStyle}>
+                  <MealBuilder
+                    key={customActiveDay}
+                    meals={customDays[customActiveDay]?.meals ?? []}
+                    onChange={(meals) => updateCustomDayMeals(customActiveDay, meals)}
+                    dayNames={DAYS}
+                    currentDayIndex={customActiveDay}
+                    onCopyMealToDays={copyMealToCustomDays}
+                  />
                 </div>
 
-                <div style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+                <div className="r-save-bar" style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '700', color: customPlanName ? '#0d1b3e' : '#b0bdd8' }}>{customPlanName || 'Unnamed Plan'}</div>
-                    <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{customBaseMeals.length} base meal{customBaseMeals.length !== 1 ? 's' : ''} · {customOverrides.length} override{customOverrides.length !== 1 ? 's' : ''}</div>
+                    <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>7 days · {customDays.reduce((s, d) => s + d.meals.length, 0)} total meals</div>
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={resetPlanMode} style={{ padding: '11px 20px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
@@ -787,7 +1014,7 @@ export default function UserProfile() {
 
         {/* ═══════ REPORTS TAB ═══════ */}
         {activeTab === 'reports' && (
-          <div style={cardStyle}>
+          <div className="r-card" style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={17} color="#3b82f6" /></div>
@@ -810,7 +1037,7 @@ export default function UserProfile() {
 
         {/* ═══════ CREDENTIALS TAB ═══════ */}
         {activeTab === 'credentials' && (
-          <div style={cardStyle}>
+          <div className="r-card" style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
               <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><KeyRound size={17} color="#1a73e8" /></div>
               <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Login Credentials</div>

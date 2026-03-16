@@ -86,7 +86,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+        <div className="dash-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
           {[
             {
               label: 'Total Patients',
@@ -121,6 +121,7 @@ export default function Dashboard() {
           ].map((stat) => (
             <div
               key={stat.label}
+              className="dash-stat-card"
               style={{
                 background: stat.bg,
                 border: `1px solid ${stat.border}`,
@@ -130,6 +131,7 @@ export default function Dashboard() {
               }}
             >
               <div
+                className="dash-stat-icon-row"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -138,6 +140,7 @@ export default function Dashboard() {
                 }}
               >
                 <div
+                  className="dash-stat-icon"
                   style={{
                     width: '44px',
                     height: '44px',
@@ -146,52 +149,58 @@ export default function Dashboard() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    flexShrink: 0,
                   }}
                 >
                   {stat.icon}
                 </div>
               </div>
-              <div
-                style={{
-                  fontSize: '32px',
-                  fontWeight: '800',
-                  color: '#0d1b3e',
-                  letterSpacing: '-1px',
-                  lineHeight: 1,
-                  marginBottom: '6px',
-                }}
-              >
-                {stat.value}
-              </div>
-              <div
-                style={{
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  color: '#4a5568',
-                  marginBottom: '8px',
-                }}
-              >
-                {stat.label}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  color: '#8a9bc4',
-                  fontWeight: '500',
-                }}
-              >
-                {stat.trendIcon}
-                {stat.trend}
+              <div className="dash-stat-body">
+                <div
+                  className="dash-stat-value"
+                  style={{
+                    fontSize: '32px',
+                    fontWeight: '800',
+                    color: '#0d1b3e',
+                    letterSpacing: '-1px',
+                    lineHeight: 1,
+                    marginBottom: '6px',
+                  }}
+                >
+                  {stat.value}
+                </div>
+                <div
+                  className="dash-stat-label"
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#4a5568',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {stat.label}
+                </div>
+                <div
+                  className="dash-stat-trend"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: '#8a9bc4',
+                    fontWeight: '500',
+                  }}
+                >
+                  {stat.trendIcon}
+                  {stat.trend}
+                </div>
               </div>
             </div>
           ))}
         </div>
 
         {/* Search + Add Row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="dash-search-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <Search
               size={16}
@@ -231,6 +240,7 @@ export default function Dashboard() {
 
           <button
             onClick={() => navigate('/users/new')}
+            className="dash-add-btn"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -262,13 +272,14 @@ export default function Dashboard() {
         </div>
 
         {/* Table */}
+        <div className="dash-table-wrap" style={{ borderRadius: '20px', boxShadow: '0 2px 16px rgba(26,115,232,0.06)' }}>
         <div
+          className="dash-table-inner"
           style={{
             background: '#ffffff',
             border: '1px solid #e8eef8',
             borderRadius: '20px',
             overflow: 'hidden',
-            boxShadow: '0 2px 16px rgba(26,115,232,0.06)',
           }}
         >
           {/* Table Header */}
@@ -524,6 +535,7 @@ export default function Dashboard() {
                 </div>
               )
             })}
+        </div>
         </div>
       </div>
     </PageWrapper>

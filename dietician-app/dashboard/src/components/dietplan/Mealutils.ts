@@ -1,7 +1,5 @@
 // src/components/dietplan/mealUtils.ts
 // All non-component exports live here — types, constants, styles, helpers.
-// This keeps MealBuilder.tsx and TemplateForm.tsx components-only
-// so Vite Fast Refresh works without warnings.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,8 +19,9 @@ export interface Meal {
   notes: string
 }
 
-export interface DayOverride {
+export interface DayPlan {
   dayIndex: number
+  dayName: string
   meals: Meal[]
 }
 
@@ -30,8 +29,7 @@ export interface TemplateFormData {
   name: string
   description: string
   targetGoal: string
-  baseMeals: Meal[]
-  dayOverrides: DayOverride[]
+  days: DayPlan[]
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -58,9 +56,20 @@ export const emptyTemplateForm = (): TemplateFormData => ({
   name: '',
   description: '',
   targetGoal: 'Weight Loss',
-  baseMeals: [emptyMeal()],
-  dayOverrides: [],
+  days: DAYS.map((dayName, dayIndex) => ({
+    dayIndex,
+    dayName,
+    meals: [emptyMeal()],
+  })),
 })
+
+// Deep-clone a meals array with fresh IDs (used for copy operations)
+export const cloneMeals = (meals: Meal[]): Meal[] =>
+  meals.map((m) => ({
+    ...m,
+    id: Math.random().toString(36).slice(2),
+    items: m.items.map((i) => ({ ...i })),
+  }))
 
 // ── Shared Styles ─────────────────────────────────────────────────────────────
 

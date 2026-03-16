@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Sidebar from './Sidebar'
 import Header from './Header'
 
@@ -7,38 +8,21 @@ interface PageWrapperProps {
 }
 
 export default function PageWrapper({ children, title }: PageWrapperProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        height: '100vh',
-        width: '100%',
-        overflow: 'hidden',
-        background: '#f8fafd',
-      }}
-    >
-      {/* Sidebar */}
-      <Sidebar />
-
-      {/* Main */}
+    <div className="pw-root">
+      {/* Mobile/tablet backdrop — closes sidebar on tap */}
       <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          flex: 1,
-          overflow: 'hidden',
-        }}
-      >
-        <Header title={title} />
+        className={`pw-overlay${sidebarOpen ? ' active' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
 
-        <main
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '32px',
-            background: '#f8fafd',
-          }}
-        >
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      <div className="pw-body">
+        <Header title={title} onMenuToggle={() => setSidebarOpen((v) => !v)} />
+        <main className="pw-main">
           {children}
         </main>
       </div>

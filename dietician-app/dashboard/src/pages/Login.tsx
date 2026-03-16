@@ -31,6 +31,7 @@ export default function Login() {
 
   return (
     <div
+      className="login-root"
       style={{
         minHeight: '100vh',
         display: 'flex',
@@ -39,6 +40,7 @@ export default function Login() {
     >
       {/* Left Panel */}
       <div
+        className="login-left"
         style={{
           flex: 1,
           background: 'linear-gradient(145deg, #1a73e8 0%, #0d47a1 100%)',
@@ -160,6 +162,7 @@ export default function Login() {
 
       {/* Right Panel - Login Form */}
       <div
+        className="login-right"
         style={{
           width: '480px',
           display: 'flex',

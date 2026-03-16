@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(npm run:*)",
+      "Bash(mkdir -p \"/c/Users/User/Desktop/dietician-app/dietician-app/mobile/src/services\")",
+      "Bash(mkdir -p \"/c/Users/User/Desktop/dietician-app/dietician-app/mobile/src/screens\")",
+      "Bash(mkdir -p \"/c/Users/User/Desktop/dietician-app/dietician-app/mobile/src/navigation\")",
+      "Bash(mkdir -p \"/c/Users/User/Desktop/dietician-app/dietician-app/mobile/src/store\")",
+      "Bash(mkdir -p \"/c/Users/User/Desktop/dietician-app/dietician-app/mobile/src/types\")",
+      "Bash(npm install:*)",
+      "Read(//c/Users/User/.claude/projects/c--Users-User-Desktop-dietician-app/memory/**)",
+      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/mobile/node_modules/expo -name tsconfig*.json)",
+      "Bash(npx expo:*)",
+      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules/expo -name tsconfig*)",
+      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/mobile/node_modules/expo -name tsconfig*)",
+      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules -path */@firebase/app/package.json -not -path */node_modules/*/node_modules/*)",
+      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules -path */@firebase/app/package.json)"
+    ]
+  }
+}

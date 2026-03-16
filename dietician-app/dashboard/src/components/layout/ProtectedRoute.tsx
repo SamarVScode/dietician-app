@@ -16,11 +16,18 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        setUser({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email ?? '',
-          displayName: firebaseUser.displayName ?? '',
-        })
+        // Only accept the auth update if there is no admin stored yet,
+        // or if it is a token refresh for the same admin UID.
+        // This prevents a patient account created via the secondary Firebase
+        // app from overwriting the admin session in the store.
+        const storedUid = useAuthStore.getState().user?.uid
+        if (!storedUid || storedUid === firebaseUser.uid) {
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            displayName: firebaseUser.displayName ?? '',
+          })
+        }
       } else {
         clearUser()
       }
