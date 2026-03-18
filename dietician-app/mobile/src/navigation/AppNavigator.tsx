@@ -1,11 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
   View, ActivityIndicator, TouchableOpacity,
   StyleSheet, Text, LayoutAnimation, Platform, UIManager,
+  Animated, Easing,
 } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -19,7 +21,6 @@ import DietScreen from '../screens/DietScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { Colors } from '../theme/theme';
 
-// Enable LayoutAnimation on Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
@@ -42,7 +43,9 @@ const TAB_LABEL: Record<string, string> = {
   Profile: 'Profile',
 };
 
-/* ─── Tab item (no Animated.Value — uses LayoutAnimation) */
+/* ─── Fixed-width tab item ───────────────────────────── */
+const ITEM_W = 82;
+
 function TabItem({
   route, focused, onPress,
 }: {
@@ -52,26 +55,18 @@ function TabItem({
 }) {
   return (
     <TouchableOpacity
-      onPress={() => {
-        LayoutAnimation.configureNext(
-          LayoutAnimation.create(200, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
-        );
-        onPress();
-      }}
+      onPress={onPress}
       activeOpacity={0.8}
       style={tab.itemOuter}
     >
-      {/* Background pill */}
       {focused && <View style={tab.itemBg} />}
 
-      {/* Icon */}
       <MaterialCommunityIcons
         name={TAB_ICON[route.name] as never}
         size={22}
         color={focused ? Colors.primary : Colors.textSecondary}
       />
 
-      {/* Label — visible only when focused */}
       {focused && (
         <Text style={tab.label} numberOfLines={1}>
           {TAB_LABEL[route.name]}
@@ -81,24 +76,37 @@ function TabItem({
   );
 }
 
-/* ─── Glass pill tab bar ─────────────────────────────── */
+/* ─── Glass pill tab bar (CSS-only frosted glass) ────── */
 function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+
+  const handlePress = (routeName: string) => {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+    );
+    navigation.navigate(routeName);
+  };
 
   return (
     <View
       style={[tab.wrapper, { paddingBottom: Math.max(insets.bottom, 8) + 12 }]}
       pointerEvents="box-none"
     >
-      <View style={tab.pill}>
-        {state.routes.map((route, index) => (
-          <TabItem
-            key={route.key}
-            route={route}
-            focused={state.index === index}
-            onPress={() => navigation.navigate(route.name)}
-          />
-        ))}
+      {/* Shadow wrapper — separate from overflow:hidden clip */}
+      <View style={tab.shadow}>
+        {/* Clip wrapper for border-radius */}
+        <View style={tab.pillClip}>
+          <View style={tab.glass}>
+            {state.routes.map((route, index) => (
+              <TabItem
+                key={route.key}
+                route={route}
+                focused={state.index === index}
+                onPress={() => handlePress(route.name)}
+              />
+            ))}
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -113,26 +121,33 @@ const tab = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  pill: {
+  shadow: {
+    borderRadius: 40,
+    shadowColor: '#3730A3',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  pillClip: {
+    borderRadius: 40,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.92)',
+  },
+  glass: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 8,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.98)',
-    shadowColor: '#0D47A1',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    elevation: 24,
+    backgroundColor: 'rgba(237, 233, 254, 0.88)',
   },
   itemOuter: {
+    width: ITEM_W,
+    height: 46,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    justifyContent: 'center',
     borderRadius: 32,
     overflow: 'hidden',
     gap: 5,
@@ -146,9 +161,38 @@ const tab = StyleSheet.create({
     color: Colors.primary,
     fontSize: 13,
     fontWeight: '700',
-    paddingLeft: 2,
   },
 });
+
+/* ─── Fade wrapper (timing + useNativeDriver:false — no _tracking risk) ─── */
+function FadeScreen({ children }: { children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: false,
+      }).start();
+      return () => {
+        opacity.setValue(0);
+      };
+    }, []),
+  );
+
+  return (
+    <Animated.View style={[{ flex: 1 }, { opacity }]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/* ─── Wrapped screens ────────────────────────────────── */
+const HomeWrapped    = () => <FadeScreen><HomeScreen /></FadeScreen>;
+const DietWrapped    = () => <FadeScreen><DietScreen /></FadeScreen>;
+const ProfileWrapped = () => <FadeScreen><ProfileScreen /></FadeScreen>;
 
 /* ─── Main tabs ──────────────────────────────────────── */
 function MainTabs() {
@@ -157,9 +201,9 @@ function MainTabs() {
       tabBar={props => <GlassTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Home"    component={HomeScreen} />
-      <Tab.Screen name="Diet"    component={DietScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Home"    component={HomeWrapped} />
+      <Tab.Screen name="Diet"    component={DietWrapped} />
+      <Tab.Screen name="Profile" component={ProfileWrapped} />
     </Tab.Navigator>
   );
 }
