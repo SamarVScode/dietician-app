@@ -1,27 +1,32 @@
 import { create } from 'zustand';
-import { User } from 'firebase/auth';
-import { UserProfile, DietPlan } from '../types';
+import type { User } from 'firebase/auth';
+import type { UserProfile } from '../types';
 
 interface AuthState {
   firebaseUser: User | null;
   userProfile: UserProfile | null;
-  dietPlan: DietPlan | null;
   isLoading: boolean;
+  isAuthenticated: boolean;
   setFirebaseUser: (user: User | null) => void;
   setUserProfile: (profile: UserProfile | null) => void;
-  setDietPlan: (plan: DietPlan | null) => void;
   setLoading: (loading: boolean) => void;
-  clear: () => void;
+  reset: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   firebaseUser: null,
   userProfile: null,
-  dietPlan: null,
   isLoading: true,
-  setFirebaseUser: (user) => set({ firebaseUser: user }),
+  isAuthenticated: false,
+  setFirebaseUser: (user) =>
+    set({ firebaseUser: user, isAuthenticated: !!user }),
   setUserProfile: (profile) => set({ userProfile: profile }),
-  setDietPlan: (plan) => set({ dietPlan: plan }),
   setLoading: (loading) => set({ isLoading: loading }),
-  clear: () => set({ firebaseUser: null, userProfile: null, dietPlan: null }),
+  reset: () =>
+    set({
+      firebaseUser: null,
+      userProfile: null,
+      isAuthenticated: false,
+      isLoading: false,
+    }),
 }));

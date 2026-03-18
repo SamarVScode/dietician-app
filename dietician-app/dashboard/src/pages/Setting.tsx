@@ -91,7 +91,7 @@ function CategoryTab({
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', flexDirection: 'column', gap: '12px' }}>
+      <div className="p-8 sm:p-15" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '50%', border: '3px solid #dbe8ff', borderTopColor: '#1a73e8', animation: 'spin 0.8s linear infinite' }} />
         <span style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500' }}>Loading...</span>
       </div>
@@ -114,7 +114,7 @@ function CategoryTab({
         <div style={{ fontSize: '12px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>
           Add Custom Item
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-2.5">
           <input
             style={inputStyle}
             value={newItem}
@@ -224,18 +224,18 @@ export default function Settings() {
         </div>
 
         {/* Tabs */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px', boxShadow: '0 2px 8px rgba(26,115,232,0.04)' }}>
+        <div className="overflow-x-auto sm:overflow-visible" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px', boxShadow: '0 2px 8px rgba(26,115,232,0.04)' }}>
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
+              className="shrink-0 sm:shrink sm:flex-1"
               style={{
-                flex: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                padding: '10px 8px',
+                padding: '10px 12px',
                 borderRadius: '12px',
                 border: 'none',
                 background: activeTab === tab.key ? '#1a73e8' : 'transparent',
@@ -255,7 +255,7 @@ export default function Settings() {
         </div>
 
         {/* Active Tab Content */}
-        <div style={{ background: 'white', borderRadius: '20px', padding: '28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+        <div className="p-4 sm:p-7 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid #f0f4ff' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
               {activeConfig.icon}

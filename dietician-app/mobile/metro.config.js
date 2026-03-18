@@ -2,22 +2,34 @@ const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '..');
+const monorepoRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch all files in the monorepo
-config.watchFolders = [workspaceRoot];
+// Watch the monorepo root so Metro can resolve packages hoisted there
+config.watchFolders = [monorepoRoot];
 
-// Resolve packages from both mobile/node_modules and root node_modules
+// Resolve from mobile's node_modules first, then monorepo root
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
+  path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-// Force Metro to prefer the "react-native" condition in package.json exports
-// This ensures @firebase/auth loads dist/rn/index.js (which registers auth)
-// instead of the browser build (which does NOT register auth)
-config.resolver.unstable_conditionNames = ['react-native', 'require', 'import'];
+// Force react and react-native (including subpath imports like react/jsx-runtime)
+// to always resolve from mobile's node_modules.
+// Root node_modules has React 19 (dashboard) vs mobile's React 18,
+// causing "invalid hook call" / "useState of null" errors without this override.
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName === 'react' ||
+    moduleName.startsWith('react/') ||
+    moduleName === 'react-native' ||
+    moduleName.startsWith('react-native/')
+  ) {
+    const resolved = require.resolve(moduleName, { paths: [projectRoot] });
+    return { filePath: resolved, type: 'sourceFile' };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;

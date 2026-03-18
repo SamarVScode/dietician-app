@@ -20,42 +20,35 @@ export default function Header({ title, onMenuToggle }: HeaderProps) {
 
   return (
     <div
-      className="header-root"
+      className="relative h-14 sm:h-18 px-2.5 min-[401px]:px-3.5 lg:px-8 shrink-0"
       style={{
-        height: '72px',
         background: '#ffffff',
         borderBottom: '1px solid #e8eef8',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 32px',
         boxShadow: '0 1px 8px rgba(31,87,255,0.04)',
-        flexShrink: 0,
       }}
     >
       {/* Left: hamburger (mobile) + title */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-        <button className="header-hamburger" onClick={onMenuToggle} aria-label="Open menu">
+        <button className="flex lg:hidden items-center justify-center w-10 h-10 rounded-xl bg-[#f5f7ff] border border-[#e8eef8] cursor-pointer shrink-0 transition-colors hover:bg-[#eef3ff]" onClick={onMenuToggle} aria-label="Open menu">
           <Menu size={18} color="#4a5568" />
         </button>
 
         <div style={{ minWidth: 0 }}>
           <div
-            className="header-title"
+            className="text-[15px] sm:text-xl truncate"
             style={{
-              fontSize: '20px',
               fontWeight: '700',
               color: '#0d1b3e',
               letterSpacing: '-0.4px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
             }}
           >
             {title}
           </div>
           <div
-            className="header-date"
+            className="hidden sm:block"
             style={{
               fontSize: '12px',
               color: '#8a9bc4',
@@ -121,14 +114,10 @@ export default function Header({ title, onMenuToggle }: HeaderProps) {
               Admin
             </div>
             <div
-              className="header-admin-email"
+              className="hidden sm:block truncate max-w-35"
               style={{
                 fontSize: '11px',
                 color: '#8a9bc4',
-                maxWidth: '140px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
               }}
             >
               {email}

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls node_modules/nativewind/dist/metro*)",
+      "Bash(ls ../node_modules/nativewind/dist/metro*)",
+      "Bash(npx react-native:*)",
+      "Bash(node -e \":*)",
+      "Bash(node:*)",
+      "Bash(ls:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''main:'''', d.get\\(''''main''''\\)\\); print\\(''''source:'''', d.get\\(''''source''''\\)\\); print\\(''''react-native:'''', d.get\\(''''react-native''''\\)\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://localhost:8081/status)",
+      "Bash(curl -s --max-time 3 http://localhost:8081/)",
+      "Bash(tasklist /fi 'imagename eq node.exe' /fo csv)",
+      "Bash(tasklist /fi 'imagename eq node.exe')",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c \"taskkill /PID 14772 /F\")",
+      "Bash(cmd /c \"taskkill /F /PID 14772\")",
+      "Bash(powershell -Command \"Stop-Process -Id 14772 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 7700 -Force; Start-Sleep -Seconds 2; Get-NetTCPConnection -LocalPort 8091 -ErrorAction SilentlyContinue\" 2>&1)",
+      "Bash(powershell -Command \"\n\\\\$proc = Get-Process -Id 7700 -ErrorAction SilentlyContinue\nif \\(\\\\$proc\\) { Write-Host 'Killing:' \\\\$proc.Name; \\\\$proc.Kill\\(\\); Write-Host 'Done' } else { Write-Host 'Not found' }\n\" 2>&1)",
+      "Bash(cat .expo/metro/*.json)",
+      "Bash(grep -r \"projectRoot\\\\|rootPath\" ../node_modules/@expo/cli/src/start/server/metro/ --include=*.ts --include=*.js -l)"
+    ]
+  }
+}

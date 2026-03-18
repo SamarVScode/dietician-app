@@ -31,26 +31,13 @@ export default function Login() {
 
   return (
     <div
-      className="login-root"
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        background: '#f8fafd',
-      }}
+      className="min-h-screen flex bg-[#f8fafd]"
     >
       {/* Left Panel */}
       <div
-        className="login-left"
+        className="hidden sm:flex flex-1 flex-col items-center justify-center relative overflow-hidden px-8 py-15 lg:p-15"
         style={{
-          flex: 1,
           background: 'linear-gradient(145deg, #1a73e8 0%, #0d47a1 100%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '60px',
-          position: 'relative',
-          overflow: 'hidden',
         }}
       >
         {/* Background decoration */}
@@ -162,17 +149,7 @@ export default function Login() {
 
       {/* Right Panel - Login Form */}
       <div
-        className="login-right"
-        style={{
-          width: '480px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '60px 48px',
-          background: 'white',
-          boxShadow: '-4px 0 40px rgba(26,115,232,0.06)',
-        }}
+        className="w-full sm:w-120 flex flex-col items-center justify-center px-5 py-9 sm:px-12 sm:py-15 bg-white sm:shadow-[-4px_0_40px_rgba(26,115,232,0.06)]"
       >
         <div style={{ width: '100%', maxWidth: '360px' }}>
 

@@ -1,630 +1,330 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
+  ScrollView,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
+import { Text, Surface, ActivityIndicator, Divider } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 import { useAuthStore } from '../store/authStore';
-import { fetchActiveDietPlan } from '../services/dietPlanService';
-import { signOut } from '../services/authService';
-import { DayPlan, Meal } from '../types';
+import {
+  fetchActiveDietPlan,
+  getTodaysDayPlan,
+  getTotalMacros,
+  formatTime12h,
+} from '../services/dietPlanService';
+import type { DietPlan, DayPlan, Meal, FoodItem } from '../types';
+import { Colors } from '../theme/theme';
 
-// Returns 1 (Mon) … 7 (Sun) for today
-function getTodayDayNumber(): number {
-  const jsDay = new Date().getDay(); // 0 = Sunday
-  return jsDay === 0 ? 7 : jsDay;
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
-function getTodayDayName(): string {
-  return new Date().toLocaleDateString('en-US', { weekday: 'long' });
-}
+/* Find the next upcoming meal by time; fallback to last meal if all passed */
+function getUpcomingMeal(meals: Meal[]): Meal | null {
+  if (!meals.length) return null;
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
 
-function getBmiColor(category: string): string {
-  switch (category) {
-    case 'Underweight': return '#f59e0b';
-    case 'Normal': return '#16a34a';
-    case 'Overweight': return '#f97316';
-    case 'Obese': return '#dc2626';
-    default: return '#6b7280';
-  }
-}
+  const sorted = [...meals].sort((a, b) => {
+    const [ah = 0, am = 0] = (a.time ?? '').split(':').map(Number);
+    const [bh = 0, bm = 0] = (b.time ?? '').split(':').map(Number);
+    return ah * 60 + am - (bh * 60 + bm);
+  });
 
-export default function HomeScreen() {
-  const { userProfile, dietPlan, setDietPlan } = useAuthStore();
-  const [loadingPlan, setLoadingPlan] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
-
-  const todayDayNumber = getTodayDayNumber();
-  const todayName = getTodayDayName();
-
-  const todayPlan: DayPlan | undefined = dietPlan?.days.find(
-    (d) => d.day === todayDayNumber,
+  return (
+    sorted.find(m => {
+      const [h = 0, min = 0] = (m.time ?? '').split(':').map(Number);
+      return h * 60 + min >= nowMin;
+    }) ?? sorted[sorted.length - 1]
   );
+}
 
-  const totalCalories = todayPlan?.meals.reduce((sum, m) => sum + (m.calories || 0), 0) ?? 0;
-  const totalProtein = todayPlan?.meals.reduce((sum, m) => sum + (m.protein || 0), 0) ?? 0;
-  const totalCarbs = todayPlan?.meals.reduce((sum, m) => sum + (m.carbs || 0), 0) ?? 0;
-  const totalFats = todayPlan?.meals.reduce((sum, m) => sum + (m.fats || 0), 0) ?? 0;
+/* ─── Compact macro strip ────────────────────────────── */
+function MacroStrip({
+  calories, protein, carbs, fats,
+}: {
+  calories: number; protein: number; carbs: number; fats: number;
+}) {
+  const items = [
+    { label: 'Calories', value: Math.round(calories), unit: 'kcal', color: Colors.caloriesColor },
+    { label: 'Protein',  value: Math.round(protein),  unit: 'g',    color: Colors.proteinColor },
+    { label: 'Carbs',    value: Math.round(carbs),    unit: 'g',    color: Colors.carbsColor },
+    { label: 'Fats',     value: Math.round(fats),     unit: 'g',    color: Colors.fatsColor },
+  ];
+  return (
+    <Surface style={styles.macroStrip} elevation={1}>
+      {items.map(({ label, value, unit, color }, idx) => (
+        <React.Fragment key={label}>
+          {idx > 0 && <View style={styles.macroDivider} />}
+          <View style={styles.macroItem}>
+            <Text style={[styles.macroVal, { color }]}>{value}</Text>
+            <Text style={styles.macroUnit}>{unit}</Text>
+            <Text style={styles.macroLbl}>{label}</Text>
+          </View>
+        </React.Fragment>
+      ))}
+    </Surface>
+  );
+}
 
-  const loadDietPlan = async () => {
-    if (!userProfile) return;
-    setLoadingPlan(true);
+/* ─── Upcoming meal card ─────────────────────────────── */
+function UpcomingMealCard({ meal }: { meal: Meal }) {
+  return (
+    <Surface style={styles.upcomingCard} elevation={2}>
+      {/* Top label */}
+      <View style={styles.upcomingLabelRow}>
+        <View style={styles.upcomingDot} />
+        <Text style={styles.upcomingLabel}>UP NEXT</Text>
+      </View>
+
+      {/* Meal name + time + calories */}
+      <View style={styles.upcomingHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.upcomingName}>{meal.name}</Text>
+          {!!meal.time && (
+            <View style={styles.upcomingTimeRow}>
+              <MaterialCommunityIcons name="clock-outline" size={13} color={Colors.textSecondary} />
+              <Text style={styles.upcomingTime}>{formatTime12h(meal.time)}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.calBadge}>
+          <Text style={styles.calBadgeText}>🔥 {Math.round(meal.calories)} kcal</Text>
+        </View>
+      </View>
+
+      {/* Macro pills */}
+      <View style={styles.pillRow}>
+        {[
+          { label: 'P', value: meal.protein, color: Colors.proteinColor },
+          { label: 'C', value: meal.carbs,   color: Colors.carbsColor },
+          { label: 'F', value: meal.fats,    color: Colors.fatsColor },
+        ].map(({ label, value, color }) => (
+          <View key={label} style={[styles.pill, { borderColor: color + '55', backgroundColor: color + '14' }]}>
+            <Text style={[styles.pillText, { color }]}>{label}: {Math.round(value)}g</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Food items */}
+      {meal.items.length > 0 && (
+        <>
+          <Divider style={styles.divider} />
+          <View style={styles.foodList}>
+            {meal.items.map((item: FoodItem, idx: number) => (
+              <View key={idx} style={styles.foodRow}>
+                <View style={styles.foodDot} />
+                <Text style={styles.foodName} numberOfLines={1}>{item.name}</Text>
+                {item.calories != null && (
+                  <Text style={styles.foodCal}>{item.calories} kcal</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
+      {!!meal.notes && (
+        <View style={styles.notesBg}>
+          <Text style={styles.notesText}>📝 {meal.notes}</Text>
+        </View>
+      )}
+    </Surface>
+  );
+}
+
+/* ─── Empty state ────────────────────────────────────── */
+function EmptyPlan() {
+  return (
+    <Surface style={styles.emptyCard} elevation={1}>
+      <MaterialCommunityIcons name="food-off-outline" size={56} color={Colors.surfaceVariant} />
+      <Text style={styles.emptyTitle}>No Diet Plan Yet</Text>
+      <Text style={styles.emptySub}>
+        Your dietician hasn't assigned a plan yet.{'\n'}Check back soon!
+      </Text>
+    </Surface>
+  );
+}
+
+/* ─── Main screen ────────────────────────────────────── */
+export default function HomeScreen() {
+  const { userProfile } = useAuthStore();
+  const [plan, setPlan]           = useState<DietPlan | null>(null);
+  const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null);
+  const [macros, setMacros]       = useState({ calories: 0, protein: 0, carbs: 0, fats: 0 });
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  const loadPlan = useCallback(async () => {
+    if (!userProfile?.id) { setLoading(false); return; }
     try {
-      const plan = await fetchActiveDietPlan(userProfile.id);
-      setDietPlan(plan);
-    } catch {
-      setDietPlan(null);
+      const activePlan = await fetchActiveDietPlan(userProfile.id);
+      if (activePlan) {
+        setPlan(activePlan);
+        const today = getTodaysDayPlan(activePlan);
+        setTodayPlan(today);
+        setMacros(getTotalMacros(today));
+      } else {
+        setPlan(null);
+        setTodayPlan(null);
+      }
+    } catch (e) {
+      console.error('Failed to load diet plan:', e);
     } finally {
-      setLoadingPlan(false);
+      setLoading(false);
     }
-  };
+  }, [userProfile?.id]);
 
-  const handleRefresh = async () => {
+  useEffect(() => { loadPlan(); }, [loadPlan]);
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    await loadDietPlan();
+    await loadPlan();
     setRefreshing(false);
   };
 
-  useEffect(() => {
-    loadDietPlan();
-  }, [userProfile?.id]);
-
-  const handleLogout = async () => {
-    setLogoutLoading(true);
-    try {
-      await signOut();
-      useAuthStore.getState().clear();
-    } finally {
-      setLogoutLoading(false);
-    }
-  };
-
-  if (!userProfile) {
-    return (
-      <SafeAreaView style={styles.centerScreen}>
-        <ActivityIndicator size="large" color="#16a34a" />
-      </SafeAreaView>
-    );
-  }
+  const firstName    = userProfile?.name?.split(' ')[0] ?? 'there';
+  const goal         = userProfile?.goal ?? '';
+  const upcomingMeal = todayPlan ? getUpcomingMeal(todayPlan.meals) : null;
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* ── Header ── */}
+      <LinearGradient
+        colors={['#001D36', '#003870', '#0061A4']}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerDecor} />
+        <Text style={styles.greeting}>{getGreeting()},</Text>
+        <Text style={styles.headerName}>{firstName}</Text>
+      </LinearGradient>
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Hello, {userProfile.name.split(' ')[0]} 👋</Text>
-          <Text style={styles.subGreeting}>Here's your plan for today</Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.logoutBtn, logoutLoading && { opacity: 0.6 }]}
-          onPress={handleLogout}
-          disabled={logoutLoading}
-          activeOpacity={0.8}
-        >
-          {logoutLoading ? (
-            <ActivityIndicator size="small" color="#dc2626" />
-          ) : (
-            <Text style={styles.logoutText}>Logout</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
+      {/* ── Content ── */}
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#16a34a" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primary}
+            colors={[Colors.primary]}
+          />
         }
       >
-        {/* Profile Card */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>My Profile</Text>
-          <View style={styles.profileGrid}>
-            <StatItem label="Age" value={`${userProfile.age} yrs`} />
-            <StatItem label="Gender" value={userProfile.gender} />
-            <StatItem label="Weight" value={`${userProfile.weight} kg`} />
-            <StatItem label="Height" value={`${userProfile.height} cm`} />
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>BMI</Text>
-              <Text style={[styles.statValue, { color: getBmiColor(userProfile.bmiCategory) }]}>
-                {userProfile.bmi.toFixed(1)}
-              </Text>
-              <Text style={[styles.bmiCategory, { color: getBmiColor(userProfile.bmiCategory) }]}>
-                {userProfile.bmiCategory}
-              </Text>
-            </View>
-            <StatItem label="Goal" value={userProfile.goal} accent />
-          </View>
-
-          {/* Diet preferences row */}
-          <View style={styles.divider} />
-          <View style={styles.prefRow}>
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{userProfile.preference}</Text>
-            </View>
-            {userProfile.bodyType ? (
-              <View style={[styles.chip, styles.chipGray]}>
-                <Text style={[styles.chipText, styles.chipTextGray]}>{userProfile.bodyType}</Text>
-              </View>
-            ) : null}
-            {userProfile.allergies?.length > 0 && (
-              <View style={[styles.chip, styles.chipRed]}>
-                <Text style={[styles.chipText, styles.chipTextRed]}>
-                  {userProfile.allergies.length} allerg{userProfile.allergies.length > 1 ? 'ies' : 'y'}
-                </Text>
+        {loading ? (
+          <ActivityIndicator style={styles.loader} color={Colors.primary} size="large" />
+        ) : !plan || !todayPlan ? (
+          <EmptyPlan />
+        ) : (
+          <View>
+            {/* Goal card */}
+            {!!goal && (
+              <View style={styles.goalCard}>
+                <Text style={styles.goalCardLabel}>YOUR GOAL</Text>
+                <Text style={styles.goalCardText}>{goal}</Text>
               </View>
             )}
-          </View>
-        </View>
 
-        {/* Diet Plan Card */}
-        <View style={styles.card}>
-          <View style={styles.planHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Today's Meals</Text>
-              <Text style={styles.planSubtitle}>{todayName}</Text>
-            </View>
-            {dietPlan && (
-              <View style={styles.planBadge}>
-                <Text style={styles.planBadgeText} numberOfLines={1}>
-                  {dietPlan.templateName}
-                </Text>
-              </View>
+            {/* Today's Nutrition — compact strip */}
+            <Text style={styles.sectionTitle}>Today's Nutrition</Text>
+            <MacroStrip
+              calories={macros.calories}
+              protein={macros.protein}
+              carbs={macros.carbs}
+              fats={macros.fats}
+            />
+
+            {/* Upcoming meal */}
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Upcoming Meal</Text>
+            {upcomingMeal ? (
+              <UpcomingMealCard meal={upcomingMeal} />
+            ) : (
+              <Surface style={styles.noMeals} elevation={0}>
+                <Text style={styles.noMealsText}>No meals planned for today.</Text>
+              </Surface>
             )}
-          </View>
-
-          {loadingPlan ? (
-            <ActivityIndicator style={{ marginVertical: 24 }} color="#16a34a" />
-          ) : !dietPlan ? (
-            <View style={styles.emptyPlan}>
-              <Text style={styles.emptyPlanIcon}>📋</Text>
-              <Text style={styles.emptyPlanText}>No diet plan assigned yet.</Text>
-              <Text style={styles.emptyPlanSub}>Your dietician will assign one soon.</Text>
-            </View>
-          ) : !todayPlan || todayPlan.meals.length === 0 ? (
-            <View style={styles.emptyPlan}>
-              <Text style={styles.emptyPlanIcon}>😴</Text>
-              <Text style={styles.emptyPlanText}>No meals planned for today.</Text>
-            </View>
-          ) : (
-            <>
-              {/* Macro summary */}
-              <View style={styles.macroRow}>
-                <MacroChip label="Calories" value={`${totalCalories}`} unit="kcal" color="#f97316" />
-                <MacroChip label="Protein" value={`${totalProtein}g`} unit="" color="#6366f1" />
-                <MacroChip label="Carbs" value={`${totalCarbs}g`} unit="" color="#eab308" />
-                <MacroChip label="Fats" value={`${totalFats}g`} unit="" color="#ec4899" />
-              </View>
-
-              {/* Meals */}
-              {todayPlan.meals.map((meal) => (
-                <MealCard key={meal.id} meal={meal} />
-              ))}
-            </>
-          )}
-        </View>
-
-        {/* Conditions / Medications */}
-        {(userProfile.conditions?.length > 0 || userProfile.medications) && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Health Notes</Text>
-            {userProfile.conditions?.length > 0 && (
-              <View style={styles.healthRow}>
-                <Text style={styles.healthLabel}>Conditions</Text>
-                <View style={styles.chipWrap}>
-                  {userProfile.conditions.map((c) => (
-                    <View key={c} style={[styles.chip, styles.chipOrange]}>
-                      <Text style={[styles.chipText, styles.chipTextOrange]}>{c}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-            {userProfile.medications ? (
-              <View style={styles.healthRow}>
-                <Text style={styles.healthLabel}>Medications</Text>
-                <Text style={styles.healthValue}>{userProfile.medications}</Text>
-              </View>
-            ) : null}
           </View>
         )}
 
         <View style={{ height: 32 }} />
       </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-/* ── Sub-components ─────────────────────────────────────────────── */
-
-function StatItem({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <View style={styles.statItem}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, accent && styles.statValueAccent]}>{value}</Text>
     </View>
   );
 }
-
-function MacroChip({
-  label,
-  value,
-  unit,
-  color,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  color: string;
-}) {
-  return (
-    <View style={[styles.macroChip, { borderColor: color + '33' }]}>
-      <Text style={[styles.macroValue, { color }]}>
-        {value}
-        {unit}
-      </Text>
-      <Text style={styles.macroLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function MealCard({ meal }: { meal: Meal }) {
-  return (
-    <View style={styles.mealCard}>
-      <View style={styles.mealHeader}>
-        <View>
-          <Text style={styles.mealName}>{meal.name}</Text>
-          <Text style={styles.mealTime}>{meal.time}</Text>
-        </View>
-        <View style={styles.mealMacros}>
-          <Text style={styles.mealCalories}>{meal.calories} kcal</Text>
-          <Text style={styles.mealMacroSub}>
-            P {meal.protein}g · C {meal.carbs}g · F {meal.fats}g
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.itemList}>
-        {meal.items.map((item, idx) => (
-          <View key={idx} style={styles.foodItem}>
-            <View style={styles.dot} />
-            <Text style={styles.foodItemText}>{item.name}</Text>
-          </View>
-        ))}
-      </View>
-
-      {!!meal.notes && (
-        <View style={styles.noteBox}>
-          <Text style={styles.noteText}>📝 {meal.notes}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-/* ── Styles ──────────────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#f0fdf4',
-  },
-  centerScreen: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f0fdf4',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  greeting: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  subGreeting: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  logoutBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
-  },
-  logoutText: {
-    color: '#dc2626',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 16,
-  },
+  container:   { flex: 1, backgroundColor: Colors.background },
+  header:      { paddingHorizontal: 20, paddingBottom: 30, paddingTop: 16, overflow: 'hidden' },
+  headerDecor: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.05)', top: -60, right: -40 },
+  greeting:   { color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: '500' },
+  headerName: { color: '#FFFFFF', fontSize: 36, fontWeight: '800', marginTop: 2, letterSpacing: -0.5 },
 
-  /* Card */
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 12,
-  },
+  body:        { flex: 1, marginTop: -14, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: Colors.background },
+  bodyContent: { paddingHorizontal: 16, paddingTop: 22, paddingBottom: 110 },
 
-  /* Profile grid */
-  profileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  statItem: {
-    width: '30%',
-    minWidth: 90,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#9ca3af',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 2,
-  },
-  statValueAccent: {
-    color: '#16a34a',
-  },
-  bmiCategory: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#f3f4f6',
-    marginVertical: 14,
-  },
-  prefRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: '#dcfce7',
+  /* Goal card */
+  goalCard: {
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  chipGray: {
-    backgroundColor: '#f3f4f6',
-  },
-  chipRed: {
-    backgroundColor: '#fef2f2',
-  },
-  chipOrange: {
-    backgroundColor: '#fff7ed',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#15803d',
-  },
-  chipTextGray: {
-    color: '#6b7280',
-  },
-  chipTextRed: {
-    color: '#dc2626',
-  },
-  chipTextOrange: {
-    color: '#c2410c',
-  },
-
-  /* Plan header */
-  planHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 4,
-  },
-  planSubtitle: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
-    marginBottom: 12,
-  },
-  planBadge: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    maxWidth: 150,
-  },
-  planBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#1d4ed8',
-  },
-
-  /* Macro row */
-  macroRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 6,
-  },
-  macroChip: {
-    flex: 1,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 8,
-    backgroundColor: '#fafafa',
-  },
-  macroValue: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  macroLabel: {
-    fontSize: 10,
-    color: '#9ca3af',
-    marginTop: 2,
-    fontWeight: '500',
-  },
-
-  /* Meal card */
-  mealCard: {
+    backgroundColor: '#EDF2FF',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    backgroundColor: '#fafafa',
+    borderColor: '#C5D5FF',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    marginBottom: 20,
   },
-  mealHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  mealName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  mealTime: {
-    fontSize: 12,
-    color: '#16a34a',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  mealMacros: {
-    alignItems: 'flex-end',
-  },
-  mealCalories: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#f97316',
-  },
-  mealMacroSub: {
-    fontSize: 11,
-    color: '#9ca3af',
-    marginTop: 2,
-  },
-  itemList: {
-    gap: 5,
-  },
-  foodItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#16a34a',
-  },
-  foodItemText: {
-    fontSize: 13,
-    color: '#374151',
-  },
-  noteBox: {
-    marginTop: 10,
-    backgroundColor: '#fffbeb',
-    borderRadius: 8,
-    padding: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#fbbf24',
-  },
-  noteText: {
-    fontSize: 12,
-    color: '#78350f',
-  },
+  goalCardLabel: { fontSize: 10, fontWeight: '800', color: Colors.primary, letterSpacing: 1.4, marginBottom: 8, opacity: 0.7 },
+  goalCardText:  { fontSize: 34, fontWeight: '900', color: Colors.primaryDark, letterSpacing: -0.5, lineHeight: 38 },
+  loader:      { marginTop: 60 },
+  sectionTitle: { fontWeight: '800', color: Colors.text, fontSize: 15, marginBottom: 10 },
 
-  /* Empty plan */
-  emptyPlan: {
-    alignItems: 'center',
-    paddingVertical: 28,
-  },
-  emptyPlanIcon: {
-    fontSize: 36,
-    marginBottom: 8,
-  },
-  emptyPlanText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  emptyPlanSub: {
-    fontSize: 13,
-    color: '#9ca3af',
-    marginTop: 4,
-  },
+  /* Compact macro strip */
+  macroStrip:  { flexDirection: 'row', borderRadius: 18, backgroundColor: Colors.surface, paddingVertical: 14, paddingHorizontal: 8 },
+  macroItem:   { flex: 1, alignItems: 'center' },
+  macroDivider: { width: 1, backgroundColor: Colors.surfaceVariant, marginVertical: 4 },
+  macroVal:    { fontSize: 17, fontWeight: '800', lineHeight: 20 },
+  macroUnit:   { fontSize: 10, color: Colors.textSecondary, fontWeight: '500', marginTop: 1 },
+  macroLbl:    { fontSize: 10, color: Colors.textSecondary, fontWeight: '600', marginTop: 2 },
 
-  /* Health notes */
-  healthRow: {
-    marginBottom: 12,
-  },
-  healthLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  healthValue: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
+  /* Upcoming meal card */
+  upcomingCard:     { borderRadius: 20, backgroundColor: Colors.surface, padding: 16 },
+  upcomingLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  upcomingDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary },
+  upcomingLabel:    { fontSize: 11, fontWeight: '800', color: Colors.primary, letterSpacing: 1.1 },
+  upcomingHeader:   { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
+  upcomingName:     { fontSize: 17, fontWeight: '800', color: Colors.text },
+  upcomingTimeRow:  { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  upcomingTime:     { color: Colors.textSecondary, fontSize: 12 },
+  calBadge:         { backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  calBadgeText:     { color: Colors.primaryDark, fontSize: 12, fontWeight: '700' },
+  pillRow:          { flexDirection: 'row', gap: 6, marginBottom: 4 },
+  pill:             { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+  pillText:         { fontSize: 11, fontWeight: '700' },
+  divider:          { marginVertical: 10, backgroundColor: Colors.surfaceVariant },
+  foodList:         { gap: 5 },
+  foodRow:          { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  foodDot:          { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.primary + '66', flexShrink: 0 },
+  foodName:         { flex: 1, color: Colors.text, fontSize: 13 },
+  foodCal:          { color: Colors.textSecondary, fontSize: 11, fontWeight: '500' },
+  notesBg:          { marginTop: 10, padding: 10, borderRadius: 12, backgroundColor: Colors.primaryLight + '55' },
+  notesText:        { color: Colors.textSecondary, fontStyle: 'italic', fontSize: 12, lineHeight: 18 },
+
+  /* Empty */
+  emptyCard:  { borderRadius: 22, padding: 40, alignItems: 'center', marginTop: 24, backgroundColor: Colors.surface },
+  emptyTitle: { fontWeight: '800', color: Colors.text, marginTop: 16, marginBottom: 6, fontSize: 17 },
+  emptySub:   { color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, fontSize: 14 },
+  noMeals:    { padding: 20, alignItems: 'center', borderRadius: 14, backgroundColor: Colors.surfaceVariant + '55' },
+  noMealsText: { color: Colors.textSecondary },
 });

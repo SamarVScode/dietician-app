@@ -9,13 +9,13 @@ export interface UserProfile {
   bmi: number;
   bmiCategory: string;
   bodyType: string;
-  bodyFatPercent?: number | null;
-  muscleMass?: number | null;
-  boneMass?: number | null;
-  bodyWaterPercent?: number | null;
-  visceralFat?: number | null;
-  bmr?: number | null;
-  metabolicAge?: number | null;
+  bodyFatPercent: number | null;
+  muscleMass: number | null;
+  boneMass: number | null;
+  bodyWaterPercent: number | null;
+  visceralFat: number | null;
+  bmr: number | null;
+  metabolicAge: number | null;
   goal: string;
   preference: string;
   allergies: string[];
@@ -29,15 +29,19 @@ export interface UserProfile {
   updatedAt: string;
 }
 
-export interface MealItem {
+export interface FoodItem {
   name: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fats?: number;
 }
 
 export interface Meal {
   id: string;
   name: string;
   time: string;
-  items: MealItem[];
+  items: FoodItem[];
   calories: number;
   protein: number;
   carbs: number;
@@ -61,8 +65,3 @@ export interface DietPlan {
   assignedBy: string;
   status: string;
 }
-
-export type RootStackParamList = {
-  Login: undefined;
-  Home: undefined;
-};

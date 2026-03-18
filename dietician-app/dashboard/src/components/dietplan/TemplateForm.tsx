@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Save, Copy, ChevronDown } from 'lucide-react'
 import { MealBuilder } from './MealBuilder'
-import { mealInputStyle, mealLabelStyle, DAYS, cloneMeals } from './mealUtils'
+import { mealInputStyle, mealLabelStyle, cloneMeals } from './mealUtils'
 import type { TemplateFormData, Meal } from './mealUtils'
 
 const GOALS = ['Weight Loss', 'Muscle Gain', 'Maintain Weight', 'General Health']
@@ -58,9 +58,11 @@ export function TemplateForm({
   const currentDay = form.days[activeDay]
   const totalMeals = form.days.reduce((sum, d) => sum + d.meals.length, 0)
 
+  const durationLabel = form.duration === 7 ? 'Weekly' : form.duration === 15 ? '15-Day' : 'Monthly'
+
   const sections = [
     { key: 'info' as const, label: 'Template Info', num: '1' },
-    { key: 'plan' as const, label: 'Weekly Plan',   num: '2' },
+    { key: 'plan' as const, label: `${durationLabel} Plan`,   num: '2' },
   ]
 
   return (
@@ -110,7 +112,7 @@ export function TemplateForm({
             </div>
             <button onClick={() => setActiveSection('plan')}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.3)', marginTop: '4px' }}>
-              Next: Set Weekly Plan →
+              Next: Set {durationLabel} Plan →
             </button>
           </div>
         </div>
@@ -121,15 +123,15 @@ export function TemplateForm({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* Day tabs */}
-          <div style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px' }}>
-            {DAYS.map((day, idx) => {
+          <div style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px', overflowX: 'auto' }}>
+            {form.days.map((day, idx) => {
               const isActive = activeDay === idx
-              const mealCount = form.days[idx]?.meals.length ?? 0
+              const mealCount = day.meals.length
               return (
-                <button key={day}
+                <button key={idx}
                   onClick={() => { setActiveDay(idx); setShowCopyFrom(false) }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
-                  <span>{day.slice(0, 3)}</span>
+                  style={{ flexShrink: 0, minWidth: form.duration > 7 ? '52px' : undefined, flex: form.duration <= 7 ? 1 : undefined, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  <span>{day.dayName.length > 5 ? day.dayName.replace('Day ', 'D') : day.dayName.slice(0, 3)}</span>
                   <span style={{ fontSize: '10px', fontWeight: '600', opacity: 0.75 }}>{mealCount}m</span>
                 </button>
               )
@@ -139,7 +141,7 @@ export function TemplateForm({
           {/* Actions bar */}
           <div style={{ background: 'white', borderRadius: '14px', padding: '12px 16px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>
-              {DAYS[activeDay]}
+              {form.days[activeDay]?.dayName ?? ''}
               <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginLeft: '8px' }}>
                 {currentDay.meals.length} meal{currentDay.meals.length !== 1 ? 's' : ''}
               </span>
@@ -162,13 +164,13 @@ export function TemplateForm({
 
                 {showCopyFrom && (
                   <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
-                    {DAYS.map((day, idx) => idx !== activeDay && (
-                      <button key={day} onClick={() => copyFromDay(idx)}
+                    {form.days.map((day, idx) => idx !== activeDay && (
+                      <button key={idx} onClick={() => copyFromDay(idx)}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
-                        <span>{day}</span>
-                        <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{form.days[idx]?.meals.length}m</span>
+                        <span>{day.dayName}</span>
+                        <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{day.meals.length}m</span>
                       </button>
                     ))}
                   </div>
@@ -183,7 +185,7 @@ export function TemplateForm({
               key={activeDay}
               meals={currentDay.meals}
               onChange={(meals) => updateDayMeals(activeDay, meals)}
-              dayNames={DAYS}
+              dayNames={form.days.map((d) => d.dayName)}
               currentDayIndex={activeDay}
               onCopyMealToDays={(meal, dayIndices) => {
                 dayIndices.forEach((idx) => {
@@ -207,7 +209,7 @@ export function TemplateForm({
         <div>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#0d1b3e' }}>{form.name || 'Untitled Template'}</div>
           <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
-            7 days · {totalMeals} total meals
+            {form.duration} days · {totalMeals} total meals
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>

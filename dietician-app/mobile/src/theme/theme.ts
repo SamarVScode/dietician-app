@@ -1,0 +1,47 @@
+import { MD3LightTheme } from 'react-native-paper';
+
+export const theme = {
+  ...MD3LightTheme,
+  colors: {
+    ...MD3LightTheme.colors,
+    primary: '#0061A4',
+    onPrimary: '#FFFFFF',
+    primaryContainer: '#D1E4FF',
+    onPrimaryContainer: '#001D36',
+    secondary: '#535F70',
+    onSecondary: '#FFFFFF',
+    secondaryContainer: '#D7E3F7',
+    onSecondaryContainer: '#101C2B',
+    background: '#ECEEF5',
+    onBackground: '#191C20',
+    surface: '#FFFFFF',
+    onSurface: '#191C20',
+    surfaceVariant: '#DFE2EB',
+    onSurfaceVariant: '#43474E',
+    outline: '#73777F',
+    error: '#BA1A1A',
+    onError: '#FFFFFF',
+    errorContainer: '#FFDAD6',
+    onErrorContainer: '#410002',
+  },
+};
+
+export const Colors = {
+  primary: '#0061A4',
+  primaryDark: '#003870',
+  primaryLight: '#D1E4FF',
+  secondary: '#535F70',
+  background: '#ECEEF5',
+  surface: '#FFFFFF',
+  surfaceVariant: '#DFE2EB',
+  white: '#FFFFFF',
+  text: '#191C20',
+  textSecondary: '#43474E',
+  error: '#BA1A1A',
+  success: '#2E7D32',
+  warning: '#F57C00',
+  caloriesColor: '#E53935',
+  proteinColor: '#1565C0',
+  carbsColor: '#F57C00',
+  fatsColor: '#2E7D32',
+};

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, X, Clock, Flame, ChevronDown, ChevronUp, Copy } from 'lucide-react'
-import { emptyMeal, mealInputStyle, mealLabelStyle } from './mealUtils'
+import { emptyMeal, mealInputStyle, mealLabelStyle, sumFoodItemMacros, formatTime12h } from './mealUtils'
 import type { Meal, FoodItem } from './mealUtils'
 
 export function MealBuilder({
@@ -38,9 +38,9 @@ export function MealBuilder({
   const addFoodItem = (mealId: string) =>
     onChange(meals.map((m) => m.id === mealId ? { ...m, items: [...m.items, { name: '' }] } : m))
 
-  const updateFoodItem = (mealId: string, idx: number, value: string) =>
+  const updateFoodItem = (mealId: string, idx: number, updates: Partial<FoodItem>) =>
     onChange(meals.map((m) => m.id === mealId
-      ? { ...m, items: m.items.map((item, i) => (i === idx ? { name: value } : item)) }
+      ? { ...m, items: m.items.map((item, i) => (i === idx ? { ...item, ...updates } : item)) }
       : m))
 
   const removeFoodItem = (mealId: string, idx: number) =>
@@ -82,8 +82,8 @@ export function MealBuilder({
               <div>
                 <div style={{ fontSize: '14px', fontWeight: '700', color: meal.name ? '#0d1b3e' : '#b0bdd8' }}>{meal.name || 'Untitled Meal'}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
-                  {meal.time && <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {meal.time}</span>}
-                  <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Flame size={10} /> {meal.calories || 0} kcal</span>
+                  {meal.time && <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {formatTime12h(meal.time)}</span>}
+                  <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Flame size={10} /> {meal.calories ?? 0} kcal</span>
                   <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{meal.items.filter((i) => i.name).length} items</span>
                 </div>
               </div>
@@ -173,7 +173,7 @@ export function MealBuilder({
                 </div>
                 <div>
                   <label style={mealLabelStyle}>Meal Time</label>
-                  <input style={mealInputStyle} value={meal.time} placeholder="e.g. 8:00 AM"
+                  <input type="time" style={{ ...mealInputStyle, cursor: 'pointer' }} value={meal.time}
                     onChange={(e) => updateMeal(meal.id, 'time', e.target.value)}
                     onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
                     onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
@@ -187,11 +187,18 @@ export function MealBuilder({
                   {meal.items.map((item, idx) => (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: '#8a9bc4', flexShrink: 0 }}>{idx + 1}</div>
-                      <input style={{ ...mealInputStyle, flex: 1 }} value={item.name} placeholder={`Food item ${idx + 1}`}
-                        onChange={(e) => updateFoodItem(meal.id, idx, e.target.value)}
-                        onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
-                        onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
-                      />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <input style={{ ...mealInputStyle }} value={item.name} placeholder={`Food item ${idx + 1}`}
+                          onChange={(e) => updateFoodItem(meal.id, idx, { name: e.target.value })}
+                          onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                          onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                        />
+                        {item.calories != null && item.calories > 0 && (
+                          <div style={{ fontSize: '10px', fontWeight: '600', color: '#8a9bc4', paddingLeft: '4px' }}>
+                            {item.calories}kcal · {item.protein ?? 0}g P · {item.carbs ?? 0}g C · {item.fats ?? 0}g F
+                          </div>
+                        )}
+                      </div>
                       {meal.items.length > 1 && (
                         <button onClick={() => removeFoodItem(meal.id, idx)}
                           style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fff5f5', border: '1px solid #fed7d7', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
@@ -210,6 +217,7 @@ export function MealBuilder({
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <label style={{ ...mealLabelStyle, marginBottom: 0 }}>Macros & Calories</label>
+                  {(() => { const s = sumFoodItemMacros(meal.items); return s.calories > 0 ? <span style={{ fontSize: '10px', color: '#8a9bc4', fontWeight: '500' }}>Auto-summed from food items</span> : null })()}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
                   {[
@@ -217,18 +225,23 @@ export function MealBuilder({
                     { field: 'protein' as const,  label: 'Protein',  unit: 'g',    color: '#1d4ed8', bg: '#eff6ff' },
                     { field: 'carbs' as const,    label: 'Carbs',    unit: 'g',    color: '#15803d', bg: '#f0fdf4' },
                     { field: 'fats' as const,     label: 'Fats',     unit: 'g',    color: '#7c3aed', bg: '#f5f3ff' },
-                  ].map((macro) => (
-                    <div key={macro.field} style={{ padding: '10px 12px', borderRadius: '10px', background: macro.bg, textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', fontWeight: '700', color: macro.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>{macro.label}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <input type="number" min={0} value={meal[macro.field] || ''} placeholder="00"
-                          onChange={(e) => updateMeal(meal.id, macro.field, parseFloat(e.target.value) || 0)}
-                          style={{ width: '52px', padding: '6px 4px', borderRadius: '8px', border: '1.5px solid rgba(0,0,0,0.08)', background: 'white', fontSize: '16px', fontWeight: '800', color: macro.color, outline: 'none', textAlign: 'center', fontFamily: 'inherit' }}
-                        />
-                        <span style={{ fontSize: '11px', fontWeight: '600', color: macro.color }}>{macro.unit}</span>
+                  ].map((macro) => {
+                    const autoSum = sumFoodItemMacros(meal.items)
+                    const autoVal = autoSum[macro.field]
+                    const displayVal = autoVal > 0 ? autoVal : meal[macro.field]
+                    return (
+                      <div key={macro.field} style={{ padding: '10px 12px', borderRadius: '10px', background: macro.bg, textAlign: 'center' }}>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: macro.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>{macro.label}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <input type="number" min={0} value={displayVal || ''} placeholder="00"
+                            onChange={(e) => updateMeal(meal.id, macro.field, parseFloat(e.target.value) || 0)}
+                            style={{ width: '52px', padding: '6px 4px', borderRadius: '8px', border: '1.5px solid rgba(0,0,0,0.08)', background: 'white', fontSize: '16px', fontWeight: '800', color: macro.color, outline: 'none', textAlign: 'center', fontFamily: 'inherit' }}
+                          />
+                          <span style={{ fontSize: '11px', fontWeight: '600', color: macro.color }}>{macro.unit}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 

@@ -1,22 +1,21 @@
 {
   "expo": {
-    "name": "Dietician App",
-    "slug": "dietician-mobile",
+    "name": "DietPlan",
+    "slug": "dietician-patient-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.dieticianapp.mobile"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.dietapp.patient"
     },
     "android": {
-      "package": "com.dieticianapp.mobile",
+      "package": "com.dietapp.patient",
       "adaptiveIcon": {
-        "backgroundColor": "#16a34a"
-      }
-    },
-    "web": {
-      "bundler": "metro"
+        "backgroundColor": "#0061A4"
+      },
+      "softwareKeyboardLayoutMode": "pan"
     }
   }
 }

@@ -6,10 +6,11 @@ import {
   collection, addDoc, getDocs, orderBy, query as fsQuery,
 } from 'firebase/firestore'
 import { db } from '../services/firebase'
+import { fetchFoodMacros } from '../services/aiService'
 import PageWrapper from '../components/layout/PageWrapper'
 import { useSettings } from '../hooks/useSettings'
 import { MealBuilder } from '../components/dietplan/MealBuilder'
-import { emptyMeal, DAYS, cloneMeals as cloneMealsUtil } from '../components/dietplan/mealUtils'
+import { emptyMeal, DAYS, generateDayNames, cloneMeals as cloneMealsUtil, formatTime12h } from '../components/dietplan/mealUtils'
 import type { Meal, DayPlan as MealDayPlan, TemplateFormData } from '../components/dietplan/mealUtils'
 import {
   User, Phone, Target, Salad, Heart, Pill, FileText,
@@ -21,7 +22,7 @@ import {
 
 const GENDERS = ['Male', 'Female', 'Other']
 type TabKey = 'profile' | 'dietplan' | 'reports' | 'credentials'
-type PlanMode = 'idle' | 'edit' | 'template' | 'custom'
+type PlanMode = 'idle' | 'edit' | 'template' | 'pick-custom-duration' | 'custom'
 
 interface UserData {
   id: string; name: string; age: number; gender: string; phone: string
@@ -67,7 +68,8 @@ const statusConfig: Record<string, { label: string; bg: string; text: string; do
   inactive:  { label: 'Inactive',    bg: '#fff5f5', text: '#c53030', dot: '#fc8181', border: '#fed7d7' },
 }
 
-const cardStyle = { background: 'white', border: '1px solid #e8eef8', borderRadius: '20px', padding: '24px', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }
+const cardStyle = { background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }
+const cardClass = 'p-3.5 sm:p-6 rounded-[14px] sm:rounded-[20px]'
 const labelStyle = { fontSize: '11px', fontWeight: '700' as const, color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '4px' }
 const valueStyle = { fontSize: '15px', fontWeight: '600' as const, color: '#0d1b3e' }
 const inputStyle = { width: '100%', padding: '11px 14px', borderRadius: '12px', border: '2px solid #e8eef8', background: '#f8fafd', fontSize: '14px', fontWeight: '500' as const, color: '#0d1b3e', outline: 'none', transition: 'all 0.15s', fontFamily: 'inherit' }
@@ -94,7 +96,8 @@ export default function UserProfile() {
   const [isAssigning, setIsAssigning]               = useState(false)
   const [assignSuccess, setAssignSuccess]           = useState(false)
 
-  // Custom plan state — 7 independent days
+  // Custom plan state
+  const [customDuration, setCustomDuration]       = useState<number>(7)
   const [customPlanName, setCustomPlanName]       = useState('')
   const [customDays, setCustomDays]               = useState<MealDayPlan[]>(() => DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] })))
   const [customActiveDay, setCustomActiveDay]     = useState(0)
@@ -212,8 +215,8 @@ export default function UserProfile() {
         assignedAt: new Date().toISOString(), assignedBy: 'admin', status: 'active',
       })
       await updateDoc(doc(db, 'users', id!), { status: 'active', updatedAt: new Date().toISOString() })
-      queryClient.invalidateQueries({ queryKey: ['user', id] })
-      queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
+      await queryClient.invalidateQueries({ queryKey: ['user', id] })
+      await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
       setAssignSuccess(true); resetPlanMode()
     } catch (e) { console.error(e) }
     finally { setIsAssigning(false) }
@@ -223,14 +226,42 @@ export default function UserProfile() {
     if (!customPlanName.trim()) return
     setIsSavingCustom(true)
     try {
+      // Fetch macros for all food items before saving
+      const enrichedDays = []
+      for (const d of customDays) {
+        const enrichedMeals = []
+        for (const meal of d.meals) {
+          const enrichedItems = []
+          let mealCals = 0, mealPro = 0, mealCarbs = 0, mealFats = 0
+          for (const item of meal.items) {
+            if (item.name.trim() && item.calories == null) {
+              const macros = await fetchFoodMacros(item.name)
+              if (macros) {
+                enrichedItems.push({ ...item, ...macros })
+                mealCals += macros.calories; mealPro += macros.protein
+                mealCarbs += macros.carbs; mealFats += macros.fats
+              } else {
+                enrichedItems.push(item)
+              }
+            } else {
+              enrichedItems.push(item)
+              mealCals += item.calories ?? 0; mealPro += item.protein ?? 0
+              mealCarbs += item.carbs ?? 0; mealFats += item.fats ?? 0
+            }
+          }
+          enrichedMeals.push({ ...meal, items: enrichedItems, calories: mealCals, protein: mealPro, carbs: mealCarbs, fats: mealFats })
+        }
+        enrichedDays.push({ day: d.dayIndex + 1, dayName: d.dayName, meals: enrichedMeals, isOverride: false })
+      }
+
       await addDoc(collection(db, 'users', id!, 'dietPlans'), {
         templateId: null, templateName: customPlanName.trim(),
-        days: customDays.map((d) => ({ day: d.dayIndex + 1, dayName: d.dayName, meals: cloneMeals(d.meals), isOverride: false })),
+        days: enrichedDays,
         assignedAt: new Date().toISOString(), assignedBy: 'admin', status: 'active',
       })
       await updateDoc(doc(db, 'users', id!), { status: 'active', updatedAt: new Date().toISOString() })
-      queryClient.invalidateQueries({ queryKey: ['user', id] })
-      queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
+      await queryClient.invalidateQueries({ queryKey: ['user', id] })
+      await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
       setAssignSuccess(true); resetPlanMode()
     } catch (e) { console.error(e) }
     finally { setIsSavingCustom(false) }
@@ -255,7 +286,7 @@ export default function UserProfile() {
         days: editDays.map((d) => ({ day: d.dayIndex + 1, dayName: d.dayName, meals: cloneMeals(d.meals), isOverride: false })),
         updatedAt: new Date().toISOString(),
       })
-      queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
+      await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
       setAssignSuccess(true); setPlanMode('idle')
     } catch (e) { console.error(e) }
     finally { setIsSavingEdit(false) }
@@ -278,7 +309,7 @@ export default function UserProfile() {
   const resetPlanMode = () => {
     setPlanMode('idle'); setSelectedTemplateId(null)
     setExpandedTemplateId(null); setExpandedDay(null); setViewDay(1)
-    setCustomPlanName(''); setCustomDays(DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] }))); setCustomActiveDay(0); setShowCustomCopyFrom(false)
+    setCustomDuration(7); setCustomPlanName(''); setCustomDays(DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] }))); setCustomActiveDay(0); setShowCustomCopyFrom(false)
     setEditDays([]); setEditActiveDay(0); setShowEditCopyFrom(false)
   }
 
@@ -341,7 +372,7 @@ export default function UserProfile() {
 
   if (!user) return (
     <PageWrapper title="Patient Profile">
-      <div style={{ textAlign: 'center', padding: '80px' }}>
+      <div className="p-8 sm:p-20" style={{ textAlign: 'center' }}>
         <div style={{ fontSize: '48px', marginBottom: '16px' }}>😕</div>
         <div style={{ fontSize: '18px', fontWeight: '700', color: '#0d1b3e' }}>Patient not found</div>
         <button onClick={() => navigate('/dashboard')} style={{ marginTop: '20px', padding: '12px 24px', borderRadius: '14px', background: '#1a73e8', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer' }}>Back to Dashboard</button>
@@ -358,7 +389,7 @@ export default function UserProfile() {
 
         {showDeleteModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: 'white', borderRadius: '24px', padding: '36px', width: '420px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+            <div className="w-[calc(100vw-24px)] sm:w-105 p-5 sm:p-9" style={{ background: 'white', borderRadius: '24px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
               <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                 <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: '#fff5f5', border: '2px solid #fed7d7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><Trash2 size={28} color="#e53e3e" /></div>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: '#0d1b3e', marginBottom: '8px' }}>Delete Patient</div>
@@ -386,7 +417,7 @@ export default function UserProfile() {
         {/* Delete Plan Modal */}
         {showDeletePlanModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: 'white', borderRadius: '24px', padding: '36px', width: '400px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+            <div className="w-[calc(100vw-24px)] sm:w-100 p-5 sm:p-9" style={{ background: 'white', borderRadius: '24px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
               <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                 <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: '#fff5f5', border: '2px solid #fed7d7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><UtensilsCrossed size={28} color="#e53e3e" /></div>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: '#0d1b3e', marginBottom: '8px' }}>Remove Diet Plan?</div>
@@ -407,15 +438,15 @@ export default function UserProfile() {
         </button>
 
         {/* Header */}
-        <div className="r-card" style={{ background: 'white', borderRadius: '20px', padding: '28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
-          <div className="profile-header-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="profile-header-avatar-row" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div className="profile-avatar" style={{ width: '72px', height: '72px', borderRadius: '22px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: '800', color: 'white', boxShadow: '0 4px 16px rgba(26,115,232,0.3)', flexShrink: 0 }}>
+        <div className="p-3.5 sm:p-7 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+          <div className="flex flex-wrap items-start gap-2.5 sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-5">
+            <div className="w-13 h-13 rounded-[16px] text-xl sm:w-18 sm:h-18 sm:rounded-[22px] sm:text-[28px] shrink-0" style={{ background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: 'white', boxShadow: '0 4px 16px rgba(26,115,232,0.3)' }}>
               {user.name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <div className="profile-name" style={{ fontSize: '22px', fontWeight: '800', color: '#0d1b3e', letterSpacing: '-0.5px', marginBottom: '6px' }}>{user.name}</div>
-              <div className="profile-header-meta" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
+              <div className="text-[17px] sm:text-[22px]" style={{ fontWeight: '800', color: '#0d1b3e', letterSpacing: '-0.5px', marginBottom: '6px' }}>{user.name}</div>
+              <div className="flex items-center gap-1 sm:gap-2.5 flex-wrap">
                 <span style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>{user.userId}</span>
                 <span style={{ color: '#e2e8f0' }}>·</span>
                 <span style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>{user.age} yrs · {user.gender}</span>
@@ -426,7 +457,7 @@ export default function UserProfile() {
               </div>
             </div>
           </div>
-          <div className="profile-header-actions" style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+          <div className="flex gap-1.5 sm:gap-2.5 w-full sm:w-auto justify-end shrink-0">
             <button onClick={() => setShowDeleteModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px', background: '#fff5f5', border: '1px solid #fed7d7', color: '#e53e3e', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
               <Trash2 size={15} /> Delete
             </button>
@@ -451,7 +482,7 @@ export default function UserProfile() {
         </div>
 
         {/* Tabs */}
-        <div className="profile-tabs-row" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px', boxShadow: '0 2px 8px rgba(26,115,232,0.04)' }}>
+        <div className="flex gap-0.5 sm:gap-1 overflow-x-auto [-webkit-overflow-scrolling:touch] flex-nowrap p-1.5 sm:p-2 max-sm:[&_button]:!whitespace-nowrap max-sm:[&_button]:!shrink-0 max-sm:[&_button]:![padding:8px_10px] max-sm:[&_button]:![font-size:11px] max-sm:[&_button]:!rounded-[10px] max-sm:[&_button]:![gap:5px] max-[400px]:[&_button]:![font-size:10px] max-[400px]:[&_button]:![padding:7px_8px] max-[400px]:[&_button]:![gap:4px]" style={{ background: 'white', borderRadius: '16px', border: '1px solid #e8eef8', boxShadow: '0 2px 8px rgba(26,115,232,0.04)' }}>
           {([
             { key: 'profile' as TabKey,     label: 'Profile Info',  icon: <User size={14} /> },
             { key: 'dietplan' as TabKey,    label: 'Diet Plan',     icon: <UtensilsCrossed size={14} /> },
@@ -465,12 +496,12 @@ export default function UserProfile() {
         {/* ═══════ PROFILE TAB ═══════ */}
         {activeTab === 'profile' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="r-card" style={cardStyle}>
+            <div className={cardClass} style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={17} color="#1a73e8" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Personal Information</div>
               </div>
-              <div className="profile-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-5">
                 <div style={{ gridColumn: '1 / -1' }}>
                   <div style={labelStyle}>Full Name</div>
                   {isEditing ? <input style={inputStyle} value={editForm.name ?? ''} onChange={(e) => updateEdit('name', e.target.value)} onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }} onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }} /> : <div style={valueStyle}>{user.name}</div>}
@@ -481,12 +512,12 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div className="r-card" style={cardStyle}>
+            <div className={cardClass} style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>⚖️</div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Body Metrics</div>
               </div>
-              <div className="profile-grid-4" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px' }}>
+              <div className="grid grid-cols-1 min-[401px]:grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-5">
                 <div><div style={labelStyle}>Weight (kg)</div>{isEditing ? <input type="number" style={inputStyle} value={editForm.weight ?? ''} onChange={(e) => updateEdit('weight', e.target.value)} onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }} onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }} /> : <div style={valueStyle}>{user.weight} kg</div>}</div>
                 <div><div style={labelStyle}>Height (cm)</div>{isEditing ? <input type="number" style={inputStyle} value={editForm.height ?? ''} onChange={(e) => updateEdit('height', e.target.value)} onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }} onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }} /> : <div style={valueStyle}>{user.height} cm</div>}</div>
                 <div><div style={labelStyle}>BMI</div><div style={{ fontSize: '22px', fontWeight: '800', color: '#1a73e8' }}>{user.bmi}</div></div>
@@ -495,12 +526,12 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div className="r-card" style={cardStyle}>
+            <div className={cardClass} style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fefce8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Salad size={17} color="#ca8a04" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Diet Information</div>
               </div>
-              <div className="profile-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5">
                 <div><div style={labelStyle}>Goal</div>{isEditing ? <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>{GOALS.map((g) => <button key={g} type="button" onClick={() => updateEdit('goal', g)} style={chipStyle((editForm.goal ?? user.goal) === g)}>{g}</button>)}</div> : <div style={{ ...valueStyle, display: 'flex', alignItems: 'center', gap: '6px' }}><Target size={14} color="#8a9bc4" /> {user.goal}</div>}</div>
                 <div><div style={labelStyle}>Food Preference</div>{isEditing ? <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>{PREFERENCES.map((p) => <button key={p} type="button" onClick={() => updateEdit('preference', p)} style={chipStyle((editForm.preference ?? user.preference) === p)}>{p}</button>)}</div> : <div style={valueStyle}>{user.preference}</div>}</div>
                 <div style={{ gridColumn: '1 / -1' }}>
@@ -511,7 +542,7 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div className="r-card" style={cardStyle}>
+            <div className={cardClass} style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={17} color="#16a34a" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Body Composition</div>
@@ -527,7 +558,7 @@ export default function UserProfile() {
               ] as { key: keyof UserData; label: string; unit: string; placeholder: string }[]).some(
                 (f) => user[f.key] != null
               ) || isEditing ? (
-                <div className="profile-grid-4" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px' }}>
+                <div className="grid grid-cols-1 min-[401px]:grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-5">
                   {([
                     { key: 'bodyFatPercent',   label: 'Body Fat',      unit: '%',        placeholder: 'e.g. 22.5', step: '0.1' },
                     { key: 'muscleMass',       label: 'Muscle Mass',   unit: 'kg',       placeholder: 'e.g. 34.2', step: '0.1' },
@@ -560,7 +591,7 @@ export default function UserProfile() {
               )}
             </div>
 
-            <div className="r-card" style={cardStyle}>
+            <div className={cardClass} style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fff5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Heart size={17} color="#e53e3e" /></div>
                 <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Health Information</div>
@@ -588,7 +619,7 @@ export default function UserProfile() {
 
             {/* ── IDLE: view current plan or assign ── */}
             {planMode === 'idle' && (
-              <div className="r-card" style={cardStyle}>
+              <div className={cardClass} style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fefce8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UtensilsCrossed size={17} color="#ca8a04" /></div>
@@ -612,11 +643,11 @@ export default function UserProfile() {
                 </div>
 
                 {planLoading ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                  <div className="p-5 sm:p-10" style={{ display: 'flex', justifyContent: 'center' }}>
                     <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '3px solid #dbe8ff', borderTopColor: '#1a73e8', animation: 'spin 0.8s linear infinite' }} />
                   </div>
                 ) : !activePlan ? (
-                  <div style={{ textAlign: 'center', padding: '48px 40px' }}>
+                  <div className="px-5 py-8 sm:px-10 sm:py-12" style={{ textAlign: 'center' }}>
                     <div style={{ width: '72px', height: '72px', borderRadius: '22px', background: '#f8fafd', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><UtensilsCrossed size={30} color="#d0d8f0" /></div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: '#4a5568', marginBottom: '8px' }}>No Diet Plan Assigned</div>
                     <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500', marginBottom: '28px' }}>Assign a plan to help {user.name} reach their goal</div>
@@ -624,7 +655,7 @@ export default function UserProfile() {
                       <button onClick={() => setPlanMode('template')} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '13px 24px', borderRadius: '14px', background: '#eef3ff', border: '2px solid #dbe8ff', color: '#1a73e8', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
                         <BookOpen size={16} /> Use a Template
                       </button>
-                      <button onClick={() => setPlanMode('custom')} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '13px 24px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.35)' }}>
+                      <button onClick={() => setPlanMode('pick-custom-duration')} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '13px 24px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.35)' }}>
                         <Plus size={16} /> Create Custom Plan
                       </button>
                     </div>
@@ -645,12 +676,12 @@ export default function UserProfile() {
 
                     {/* Meals for selected day */}
                     {viewDayPlan && (
-                      <div className="meal-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                      <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2.5">
                         {viewDayPlan.meals.map((meal: Meal, idx: number) => (
                           <div key={meal.id ?? idx} style={{ background: '#f8fafd', borderRadius: '16px', padding: '16px', border: '1px solid #e8eef8' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                               <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>{meal.name || `Meal ${idx + 1}`}</div>
-                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {meal.time}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {formatTime12h(meal.time)}</span>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
                               {meal.items.filter((i) => i.name).map((item, i: number) => (
@@ -663,7 +694,7 @@ export default function UserProfile() {
                               {([{ label: 'Cal', value: meal.calories, color: '#c2410c', bg: '#fff7ed' }, { label: 'Pro', value: meal.protein, color: '#1d4ed8', bg: '#eff6ff' }, { label: 'Carb', value: meal.carbs, color: '#15803d', bg: '#f0fdf4' }, { label: 'Fat', value: meal.fats, color: '#7c3aed', bg: '#f5f3ff' }] as { label: string; value: number; color: string; bg: string }[]).map((m) => (
                                 <div key={m.label} style={{ textAlign: 'center', padding: '6px 4px', borderRadius: '8px', background: m.bg }}>
                                   <div style={{ fontSize: '10px', fontWeight: '700', color: m.color }}>{m.label}</div>
-                                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0d1b3e' }}>{m.value || '—'}</div>
+                                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0d1b3e' }}>{m.value != null && m.value > 0 ? m.value : '—'}</div>
                                 </div>
                               ))}
                             </div>
@@ -677,7 +708,7 @@ export default function UserProfile() {
                       <button onClick={() => setPlanMode('template')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '12px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
                         <BookOpen size={14} /> Replace with Template
                       </button>
-                      <button onClick={() => setPlanMode('custom')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '12px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                      <button onClick={() => setPlanMode('pick-custom-duration')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '12px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
                         <Plus size={14} /> New Custom Plan
                       </button>
                     </div>
@@ -700,7 +731,7 @@ export default function UserProfile() {
                 </div>
 
                 {/* Day tabs */}
-                <div className="plan-day-tabs" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px' }}>
+                <div className="flex gap-0.5 sm:gap-1 p-1.5 sm:p-2 rounded-[16px] max-sm:[&_button]:![padding:8px_3px] max-sm:[&_button]:![font-size:10px] max-sm:[&_button]:!rounded-lg" style={{ background: 'white', border: '1px solid #e8eef8' }}>
                   {DAYS.map((day, idx) => {
                     const isActive = editActiveDay === idx
                     const mealCount = editDays[idx]?.meals.length ?? 0
@@ -715,7 +746,7 @@ export default function UserProfile() {
                 </div>
 
                 {/* Actions bar */}
-                <div className="plan-actions-bar" style={{ background: 'white', borderRadius: '14px', padding: '12px 16px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div className="flex flex-col items-start gap-2 p-2.5 sm:p-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] max-sm:[&>div:last-child]:!w-full max-sm:[&>div:last-child]:!justify-end" style={{ background: 'white', border: '1px solid #e8eef8' }}>
                   <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>
                     {DAYS[editActiveDay]}
                     <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginLeft: '8px' }}>
@@ -749,7 +780,7 @@ export default function UserProfile() {
                   </div>
                 </div>
 
-                <div className="r-card" style={cardStyle}>
+                <div className={cardClass} style={cardStyle}>
                   <MealBuilder
                     key={editActiveDay}
                     meals={editDays[editActiveDay]?.meals ?? []}
@@ -760,7 +791,7 @@ export default function UserProfile() {
                   />
                 </div>
 
-                <div className="r-save-bar" style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+                <div className="flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4.5 sm:px-6 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                   <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
                     7 days · {editDays.reduce((s, d) => s + d.meals.length, 0)} total meals
                   </div>
@@ -796,11 +827,11 @@ export default function UserProfile() {
                 )}
 
                 {templates.length === 0 ? (
-                  <div style={{ ...cardStyle, textAlign: 'center', padding: '48px' }}>
+                  <div className="p-5 sm:p-12" style={{ ...cardStyle, textAlign: 'center' }}>
                     <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
                     <div style={{ fontSize: '15px', fontWeight: '700', color: '#4a5568', marginBottom: '8px' }}>No templates saved yet</div>
                     <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500', marginBottom: '20px' }}>Create templates from the Templates page, or build a custom plan instead.</div>
-                    <button onClick={() => setPlanMode('custom')} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.3)' }}>
+                    <button onClick={() => setPlanMode('pick-custom-duration')} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.3)' }}>
                       <Plus size={16} /> Create Custom Plan Instead
                     </button>
                   </div>
@@ -808,8 +839,9 @@ export default function UserProfile() {
                   const isSelected = selectedTemplateId === template.id
                   const isExpanded = expandedTemplateId === template.id
                   const gc = goalColors[template.targetGoal] ?? goalColors['General Health']
-                  const firstDayMeals = template.days?.[0]?.meals ?? []
-                  const totalCals = firstDayMeals.reduce((s: number, m: Meal) => s + (m.calories || 0), 0)
+                  const templateDays = template.days ?? []
+                  const mealsPerDay = templateDays[0]?.meals?.length ?? 0
+                  const totalCals = templateDays[0]?.meals?.reduce((s: number, m: Meal) => s + (m.calories ?? 0), 0) ?? 0
                   const days = buildDaysFromTemplate(template)
 
                   return (
@@ -828,7 +860,7 @@ export default function UserProfile() {
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e', marginBottom: '4px' }}>{template.name}</div>
                           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const, alignItems: 'center' }}>
                             <span style={{ padding: '2px 8px', borderRadius: '40px', background: gc.bg, border: `1px solid ${gc.border}`, fontSize: '11px', fontWeight: '700', color: gc.color }}>{template.targetGoal}</span>
-                            <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{firstDayMeals.length} meals/day</span>
+                            <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{mealsPerDay} meals/day</span>
                             {totalCals > 0 && <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Flame size={11} /> {totalCals} kcal/day</span>}
                           </div>
                         </div>
@@ -865,7 +897,7 @@ export default function UserProfile() {
                                   <div key={meal.id ?? idx} style={{ background: 'white', borderRadius: '14px', padding: '14px', border: '1px solid #e8eef8' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                                       <div style={{ fontSize: '13px', fontWeight: '700', color: '#0d1b3e' }}>{meal.name || `Meal ${idx + 1}`}</div>
-                                      <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {meal.time}</span>
+                                      <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}><Clock size={10} /> {formatTime12h(meal.time)}</span>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '8px' }}>
                                       {meal.items.filter((i) => i.name).map((item, i: number) => (
@@ -878,7 +910,7 @@ export default function UserProfile() {
                                       {([{ label: 'Cal', value: meal.calories, color: '#c2410c' }, { label: 'Pro', value: meal.protein, color: '#1d4ed8' }, { label: 'Carb', value: meal.carbs, color: '#15803d' }, { label: 'Fat', value: meal.fats, color: '#7c3aed' }] as { label: string; value: number; color: string }[]).map((m) => (
                                         <div key={m.label} style={{ textAlign: 'center', padding: '4px', borderRadius: '6px', background: '#f8fafd' }}>
                                           <div style={{ fontSize: '10px', fontWeight: '700', color: m.color }}>{m.label}</div>
-                                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#0d1b3e' }}>{m.value || '—'}</div>
+                                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#0d1b3e' }}>{m.value != null && m.value > 0 ? m.value : '—'}</div>
                                         </div>
                                       ))}
                                     </div>
@@ -894,7 +926,7 @@ export default function UserProfile() {
                 })}
 
                 {templates.length > 0 && (
-                  <div className="r-save-bar" style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+                  <div className="flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4.5 sm:px-6 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                     <div style={{ fontSize: '14px', color: selectedTemplateId ? '#0d1b3e' : '#b0bdd8', fontWeight: selectedTemplateId ? '700' : '500' }}>
                       {selectedTemplateId ? <>Selected: <span style={{ color: '#1a73e8' }}>{templates.find((t) => t.id === selectedTemplateId)?.name}</span></> : 'No template selected'}
                     </div>
@@ -907,6 +939,61 @@ export default function UserProfile() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── PICK CUSTOM DURATION ── */}
+            {planMode === 'pick-custom-duration' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div className="text-[13px] sm:text-[15px]" style={{ fontWeight: '700', color: '#0d1b3e' }}>Select Plan Duration</div>
+                    <div className="text-[11px] sm:text-[13px]" style={{ color: '#8a9bc4', fontWeight: '500', marginTop: '2px' }}>Choose how long this diet plan will be</div>
+                  </div>
+                  <button onClick={resetPlanMode} className="text-[11px] sm:text-[13px]" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#f8fafd', border: '1.5px solid #e8eef8', color: '#4a5568', fontWeight: '600', cursor: 'pointer' }}>
+                    <X size={13} /> Cancel
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {[
+                    { value: 7, label: 'Weekly', subtitle: '7-day plan', color: '#1a73e8', bg: '#eef3ff', border: '#dbe8ff' },
+                    { value: 15, label: '15 Days', subtitle: '15-day plan', color: '#0d9488', bg: '#f0fdfa', border: '#99f6e4' },
+                    { value: 30, label: 'Monthly', subtitle: '30-day plan', color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
+                  ].map((opt) => (
+                    <button key={opt.value} onClick={() => setCustomDuration(opt.value)}
+                      className="gap-3 p-3.5 sm:gap-4 sm:p-[18px] sm:px-[22px] rounded-[14px] sm:rounded-[16px]"
+                      style={{
+                        display: 'flex', alignItems: 'center',
+                        background: 'white',
+                        border: customDuration === opt.value ? `2px solid ${opt.color}` : '1.5px solid #e8eef8',
+                        boxShadow: customDuration === opt.value ? `0 4px 20px ${opt.color}20` : '0 2px 8px rgba(26,115,232,0.04)',
+                        cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left' as const,
+                      }}>
+                      <div className="w-10 h-10 rounded-[12px] sm:w-12 sm:h-12 sm:rounded-[14px] text-sm sm:text-base" style={{ background: opt.bg, border: `1px solid ${opt.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: opt.color, flexShrink: 0 }}>
+                        {opt.value}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div className="text-[13px] sm:text-[15px]" style={{ fontWeight: '700', color: '#0d1b3e', marginBottom: '2px' }}>{opt.label}</div>
+                        <div className="text-[10px] sm:text-xs" style={{ color: '#8a9bc4', fontWeight: '500' }}>{opt.subtitle}</div>
+                      </div>
+                      <div className="w-[18px] h-[18px] sm:w-5 sm:h-5" style={{ borderRadius: '50%', border: customDuration === opt.value ? `2px solid ${opt.color}` : '2px solid #e8eef8', background: customDuration === opt.value ? opt.color : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {customDuration === opt.value && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'white' }} />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    const dayNames = generateDayNames(customDuration)
+                    setCustomDays(dayNames.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] })))
+                    setCustomActiveDay(0)
+                    setPlanMode('custom')
+                  }}
+                  style={{ padding: '13px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.35)' }}>
+                  Continue
+                </button>
               </div>
             )}
 
@@ -923,7 +1010,7 @@ export default function UserProfile() {
                   </button>
                 </div>
 
-                <div className="r-card" style={cardStyle}>
+                <div className={cardClass} style={cardStyle}>
                   <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '8px', display: 'block' }}>Plan Name *</label>
                   <input value={customPlanName} onChange={(e) => setCustomPlanName(e.target.value)}
                     placeholder={`e.g. ${user.name}'s ${user.goal} Plan`}
@@ -934,14 +1021,14 @@ export default function UserProfile() {
                 </div>
 
                 {/* Day tabs */}
-                <div className="plan-day-tabs" style={{ background: 'white', borderRadius: '16px', padding: '8px', border: '1px solid #e8eef8', display: 'flex', gap: '4px' }}>
-                  {DAYS.map((day, idx) => {
+                <div className="flex gap-0.5 sm:gap-1 p-1.5 sm:p-2 rounded-[16px] max-sm:[&_button]:![padding:8px_3px] max-sm:[&_button]:![font-size:10px] max-sm:[&_button]:!rounded-lg" style={{ background: 'white', border: '1px solid #e8eef8', overflowX: 'auto' }}>
+                  {customDays.map((day, idx) => {
                     const isActive = customActiveDay === idx
-                    const mealCount = customDays[idx]?.meals.length ?? 0
+                    const mealCount = day.meals.length
                     return (
-                      <button key={day} onClick={() => { setCustomActiveDay(idx); setShowCustomCopyFrom(false) }}
-                        style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
-                        <span>{day.slice(0, 3)}</span>
+                      <button key={idx} onClick={() => { setCustomActiveDay(idx); setShowCustomCopyFrom(false) }}
+                        style={{ flexShrink: 0, minWidth: customDuration > 7 ? '48px' : undefined, flex: customDuration <= 7 ? 1 : undefined, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <span>{day.dayName.length > 5 ? day.dayName.replace('Day ', 'D') : day.dayName.slice(0, 3)}</span>
                         <span style={{ fontSize: '10px', fontWeight: '600', opacity: 0.75 }}>{mealCount}m</span>
                       </button>
                     )
@@ -949,9 +1036,9 @@ export default function UserProfile() {
                 </div>
 
                 {/* Actions bar */}
-                <div className="plan-actions-bar" style={{ background: 'white', borderRadius: '14px', padding: '12px 16px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div className="flex flex-col items-start gap-2 p-2.5 sm:p-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] max-sm:[&>div:last-child]:!w-full max-sm:[&>div:last-child]:!justify-end" style={{ background: 'white', border: '1px solid #e8eef8' }}>
                   <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>
-                    {DAYS[customActiveDay]}
+                    {customDays[customActiveDay]?.dayName ?? ''}
                     <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginLeft: '8px' }}>
                       {customDays[customActiveDay]?.meals.length ?? 0} meal{(customDays[customActiveDay]?.meals.length ?? 0) !== 1 ? 's' : ''}
                     </span>
@@ -967,14 +1054,14 @@ export default function UserProfile() {
                         Copy from <ChevronDown size={12} />
                       </button>
                       {showCustomCopyFrom && (
-                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
-                          {DAYS.map((day, idx) => idx !== customActiveDay && (
-                            <button key={day} onClick={() => copyCustomDayFrom(idx)}
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px', maxHeight: '250px', overflowY: 'auto' }}>
+                          {customDays.map((day, idx) => idx !== customActiveDay && (
+                            <button key={idx} onClick={() => copyCustomDayFrom(idx)}
                               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
-                              <span>{day}</span>
-                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{customDays[idx]?.meals.length}m</span>
+                              <span>{day.dayName}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{day.meals.length}m</span>
                             </button>
                           ))}
                         </div>
@@ -983,21 +1070,21 @@ export default function UserProfile() {
                   </div>
                 </div>
 
-                <div className="r-card" style={cardStyle}>
+                <div className={cardClass} style={cardStyle}>
                   <MealBuilder
                     key={customActiveDay}
                     meals={customDays[customActiveDay]?.meals ?? []}
                     onChange={(meals) => updateCustomDayMeals(customActiveDay, meals)}
-                    dayNames={DAYS}
+                    dayNames={customDays.map((d) => d.dayName)}
                     currentDayIndex={customActiveDay}
                     onCopyMealToDays={copyMealToCustomDays}
                   />
                 </div>
 
-                <div className="r-save-bar" style={{ background: 'white', borderRadius: '20px', padding: '18px 24px', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+                <div className="flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4.5 sm:px-6 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '700', color: customPlanName ? '#0d1b3e' : '#b0bdd8' }}>{customPlanName || 'Unnamed Plan'}</div>
-                    <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>7 days · {customDays.reduce((s, d) => s + d.meals.length, 0)} total meals</div>
+                    <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>{customDuration} days · {customDays.reduce((s, d) => s + d.meals.length, 0)} total meals</div>
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={resetPlanMode} style={{ padding: '11px 20px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
@@ -1014,7 +1101,7 @@ export default function UserProfile() {
 
         {/* ═══════ REPORTS TAB ═══════ */}
         {activeTab === 'reports' && (
-          <div className="r-card" style={cardStyle}>
+          <div className={cardClass} style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={17} color="#3b82f6" /></div>
@@ -1024,7 +1111,7 @@ export default function UserProfile() {
                 <ClipboardList size={14} /> View All Reports
               </button>
             </div>
-            <div style={{ textAlign: 'center', padding: '60px 40px' }}>
+            <div className="px-5 py-8 sm:px-10 sm:py-15" style={{ textAlign: 'center' }}>
               <div style={{ width: '72px', height: '72px', borderRadius: '22px', background: '#f8fafd', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><ClipboardList size={30} color="#d0d8f0" /></div>
               <div style={{ fontSize: '16px', fontWeight: '700', color: '#4a5568', marginBottom: '8px' }}>View Full Reports</div>
               <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500', marginBottom: '24px' }}>See all daily reports submitted by this patient</div>
@@ -1037,7 +1124,7 @@ export default function UserProfile() {
 
         {/* ═══════ CREDENTIALS TAB ═══════ */}
         {activeTab === 'credentials' && (
-          <div className="r-card" style={cardStyle}>
+          <div className={cardClass} style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
               <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><KeyRound size={17} color="#1a73e8" /></div>
               <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Login Credentials</div>

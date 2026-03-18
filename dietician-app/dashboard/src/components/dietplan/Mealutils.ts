@@ -5,6 +5,10 @@
 
 export interface FoodItem {
   name: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fats?: number
 }
 
 export interface Meal {
@@ -29,6 +33,7 @@ export interface TemplateFormData {
   name: string
   description: string
   targetGoal: string
+  duration: number
   days: DayPlan[]
 }
 
@@ -43,7 +48,7 @@ export const DAYS = [
 export const emptyMeal = (): Meal => ({
   id: Math.random().toString(36).slice(2),
   name: '',
-  time: '8:00 AM',
+  time: '08:00',
   items: [{ name: '' }],
   calories: 0,
   protein: 0,
@@ -52,16 +57,47 @@ export const emptyMeal = (): Meal => ({
   notes: '',
 })
 
-export const emptyTemplateForm = (): TemplateFormData => ({
+/** Convert 24h time string ("08:00") to 12h display ("8:00 AM") */
+export function formatTime12h(time: string): string {
+  if (!time) return ''
+  const [hStr, mStr] = time.split(':')
+  let h = parseInt(hStr, 10)
+  const m = mStr ?? '00'
+  if (isNaN(h)) return time
+  const period = h >= 12 ? 'PM' : 'AM'
+  if (h === 0) h = 12
+  else if (h > 12) h -= 12
+  return `${h}:${m} ${period}`
+}
+
+export function generateDayNames(duration: number): string[] {
+  if (duration === 7) return DAYS
+  return Array.from({ length: duration }, (_, i) => `Day ${i + 1}`)
+}
+
+export const emptyTemplateForm = (duration = 7): TemplateFormData => ({
   name: '',
   description: '',
   targetGoal: 'Weight Loss',
-  days: DAYS.map((dayName, dayIndex) => ({
+  duration,
+  days: generateDayNames(duration).map((dayName, dayIndex) => ({
     dayIndex,
     dayName,
     meals: [emptyMeal()],
   })),
 })
+
+export function sumFoodItemMacros(items: FoodItem[]) {
+  return items.reduce(
+    (acc, item) => ({
+      calories: acc.calories + (item.calories ?? 0),
+      protein: acc.protein + (item.protein ?? 0),
+      carbs: acc.carbs + (item.carbs ?? 0),
+      fats: acc.fats + (item.fats ?? 0),
+    }),
+    { calories: 0, protein: 0, carbs: 0, fats: 0 },
+  )
+}
 
 // Deep-clone a meals array with fresh IDs (used for copy operations)
 export const cloneMeals = (meals: Meal[]): Meal[] =>

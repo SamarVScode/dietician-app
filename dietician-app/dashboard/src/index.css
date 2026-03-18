@@ -1,11 +1,13 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Google+Sans+Display:wght@400;500;600;700&display=swap');
-@import './responsive.css';
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 body {
@@ -15,11 +17,13 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
+  height: 3px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
+  margin: 8px;
 }
 
 ::-webkit-scrollbar-thumb {

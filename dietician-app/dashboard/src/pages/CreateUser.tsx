@@ -213,7 +213,7 @@ export default function CreateUser() {
   if (credentials) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-        <div className="creds-modal-box" style={{ background: 'white', borderRadius: '28px', padding: '40px', width: '440px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+        <div className="w-[calc(100vw-24px)] sm:w-110 p-5 sm:p-10" style={{ background: 'white', borderRadius: '28px', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{ width: '72px', height: '72px', borderRadius: '24px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 8px 24px rgba(26,115,232,0.35)' }}>
               <Check size={36} color="white" />
@@ -281,7 +281,8 @@ export default function CreateUser() {
     transition: 'all 0.15s ease',
   })
 
-  const sectionStyle = { background: 'white', borderRadius: '20px', padding: '28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }
+  const sectionStyle = { background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }
+  const sectionClass = 'p-3.5 sm:p-7 rounded-[14px] sm:rounded-[20px]'
   const sectionHeaderStyle = { display: 'flex' as const, alignItems: 'center' as const, gap: '12px', marginBottom: '24px' }
   const sectionIconStyle = (bg: string) => ({ width: '40px', height: '40px', borderRadius: '12px', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 })
 
@@ -290,15 +291,15 @@ export default function CreateUser() {
       <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         {/* Progress Steps */}
-        <div className="r-card" style={{ background: 'white', borderRadius: '20px', padding: '20px 28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
-          <div className="create-steps-row" style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="p-3.5 sm:p-5 sm:px-7 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+          <div className="flex items-center gap-1 sm:gap-2">
             {steps.map((step, i) => (
               <div key={step} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: i <= activeStep ? 'linear-gradient(135deg, #1a73e8, #0d47a1)' : '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: i <= activeStep ? 'white' : '#b0bdd8', boxShadow: i <= activeStep ? '0 2px 8px rgba(26,115,232,0.3)' : 'none', flexShrink: 0, transition: 'all 0.2s' }}>
                     {i < activeStep ? <Check size={14} /> : i + 1}
                   </div>
-                  <span className="step-label" style={{ fontSize: '13px', fontWeight: i === activeStep ? '700' : '500', color: i === activeStep ? '#1a73e8' : i < activeStep ? '#0d1b3e' : '#b0bdd8', whiteSpace: 'nowrap' }}>{step}</span>
+                  <span className="hidden sm:inline whitespace-nowrap" style={{ fontSize: '13px', fontWeight: i === activeStep ? '700' : '500', color: i === activeStep ? '#1a73e8' : i < activeStep ? '#0d1b3e' : '#b0bdd8' }}>{step}</span>
                 </div>
                 {i < steps.length - 1 && <div style={{ flex: 1, height: '2px', background: i < activeStep ? '#1a73e8' : '#e8eef8', margin: '0 12px', transition: 'background 0.2s' }} />}
               </div>
@@ -307,7 +308,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 1 — Personal Info */}
-        <div className="r-card" style={sectionStyle}>
+        <div className={sectionClass} style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#eef3ff')}><User size={20} color="#1a73e8" /></div>
             <div>
@@ -316,7 +317,7 @@ export default function CreateUser() {
             </div>
           </div>
 
-          <div className="create-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={labelStyle}>Full Name *</label>
               <input type="text" value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="Enter patient full name" style={inputStyle(!!errors.name)}
@@ -354,7 +355,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 2 — Body Metrics */}
-        <div className="r-card" style={sectionStyle}>
+        <div className={sectionClass} style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#f0fdfa')}><Weight size={20} color="#0d9488" /></div>
             <div>
@@ -363,7 +364,7 @@ export default function CreateUser() {
             </div>
           </div>
 
-          <div className="create-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             <div>
               <label style={labelStyle}><Weight size={13} style={{ display: 'inline', marginRight: '4px' }} />Weight (kg) *</label>
               <input type="number" value={form.weight} onChange={(e) => updateField('weight', e.target.value)} placeholder="e.g. 72" style={inputStyle(!!errors.weight)}
@@ -405,7 +406,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 3 — Diet Info */}
-        <div className="r-card" style={sectionStyle}>
+        <div className={sectionClass} style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#fefce8')}><Salad size={20} color="#ca8a04" /></div>
             <div>
@@ -444,7 +445,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 4 — Health Info */}
-        <div className="r-card" style={sectionStyle}>
+        <div className={sectionClass} style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#fff5f5')}><Heart size={20} color="#e53e3e" /></div>
             <div>
@@ -479,7 +480,7 @@ export default function CreateUser() {
         </div>
 
         {/* SECTION 5 — Body Composition (Smart Scale) */}
-        <div className="r-card" style={sectionStyle}>
+        <div className={sectionClass} style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <div style={sectionIconStyle('#f0fdf4')}><Activity size={20} color="#16a34a" /></div>
             <div>
@@ -492,7 +493,7 @@ export default function CreateUser() {
             All fields are optional. Enter values from the patient's body composition monitor if available.
           </div>
 
-          <div className="create-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             <div>
               <label style={labelStyle}>Body Fat (%)</label>
               <input type="number" step="0.1" value={form.bodyFatPercent} onChange={(e) => updateField('bodyFatPercent', e.target.value)} placeholder="e.g. 22.5" style={inputStyle(false)}
@@ -552,7 +553,7 @@ export default function CreateUser() {
         </div>
 
         {/* Action Buttons */}
-        <div className="r-save-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 28px', background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
+        <div className="flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:justify-between sm:items-center sm:p-5 sm:px-7 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
           <button onClick={() => navigate('/dashboard')} style={{ padding: '13px 24px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.borderColor = '#dbe8ff' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = '#f8fafd'; e.currentTarget.style.borderColor = '#e8eef8' }}

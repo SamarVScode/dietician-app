@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
 import { auth } from '../../services/firebase'
 import {
-  LayoutDashboard, UserPlus, LogOut,
+  LayoutDashboard, Users, LogOut,
   Stethoscope, ChevronRight, BookOpen, Settings2, X,
 } from 'lucide-react'
 import { ROUTES } from '../../constants/routes'
@@ -25,15 +25,15 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   }
 
   const navItems = [
-    { to: ROUTES.DASHBOARD,    icon: <LayoutDashboard size={17} />, label: 'Dashboard' },
-    { to: ROUTES.CREATE_USER,  icon: <UserPlus size={17} />,        label: 'Add New Patient' },
-    { to: ROUTES.TEMPLATES,    icon: <BookOpen size={17} />,        label: 'Diet Templates' },
-    { to: ROUTES.SETTINGS,     icon: <Settings2 size={17} />,       label: 'Settings' },
+    { to: ROUTES.DASHBOARD,    icon: <LayoutDashboard size={17} />,  label: 'Dashboard' },
+    { to: ROUTES.PATIENTS,     icon: <Users size={17} />,            label: 'Patients' },
+    { to: ROUTES.TEMPLATES,    icon: <BookOpen size={17} />,         label: 'Diet Templates' },
+    { to: ROUTES.SETTINGS,     icon: <Settings2 size={17} />,        label: 'Settings' },
   ]
 
   return (
     <div
-      className={`sidebar-root${isOpen ? ' sidebar-open' : ''}`}
+      className={`shrink-0 z-[300] transition-transform duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)] fixed top-0 left-0 h-screen shadow-[4px_0_32px_rgba(13,27,62,0.18)] lg:relative lg:top-auto lg:left-auto lg:h-auto lg:shadow-[2px_0_12px_rgba(31,87,255,0.04)] ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
       style={{
         width: '280px',
         minHeight: '100vh',
@@ -41,7 +41,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         borderRight: '1px solid #e8eef8',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '2px 0 12px rgba(31,87,255,0.04)',
       }}
     >
       {/* Logo + mobile close button */}
@@ -59,13 +58,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         {/* Close button — only visible on mobile/tablet via CSS */}
         <button
           onClick={onClose}
+          className="flex lg:hidden items-center justify-center shrink-0 cursor-pointer"
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '32px', height: '32px', borderRadius: '10px',
             background: '#f8fafd', border: '1px solid #e8eef8',
-            cursor: 'pointer', flexShrink: 0,
           }}
-          className="sidebar-close-btn"
         >
           <X size={16} color="#8a9bc4" />
         </button>

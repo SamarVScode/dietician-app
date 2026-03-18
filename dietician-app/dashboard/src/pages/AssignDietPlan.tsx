@@ -6,6 +6,7 @@ import {
   updateDoc, getDocs, orderBy, query,
 } from 'firebase/firestore'
 import { db } from '../services/firebase'
+import { formatTime12h } from '../components/dietplan/mealUtils'
 import PageWrapper from '../components/layout/PageWrapper'
 import {
   ArrowLeft, Check, ChevronDown, ChevronUp,
@@ -25,7 +26,13 @@ interface UserData {
   status: string
 }
 
-interface FoodItem { name: string }
+interface FoodItem {
+  name: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fats?: number
+}
 
 interface Meal {
   id: string
@@ -154,7 +161,7 @@ export default function AssignDietPlan() {
   if (assigned) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,62,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-        <div className="creds-modal-box" style={{ background: 'white', borderRadius: '28px', padding: '48px 40px', width: '420px', textAlign: 'center', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
+        <div className="w-[calc(100vw-24px)] sm:w-105 p-5 sm:px-10 sm:py-12" style={{ background: 'white', borderRadius: '28px', textAlign: 'center', boxShadow: '0 24px 80px rgba(13,27,62,0.2)' }}>
           <div style={{ width: '80px', height: '80px', borderRadius: '28px', background: 'linear-gradient(135deg, #1a73e8, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', boxShadow: '0 8px 24px rgba(26,115,232,0.35)' }}>
             <Check size={40} color="white" />
           </div>
@@ -232,7 +239,7 @@ export default function AssignDietPlan() {
           </div>
 
           {templates.length === 0 && (
-            <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', padding: '48px', textAlign: 'center' }}>
+            <div className="p-5 sm:p-12" style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8eef8', textAlign: 'center' }}>
               <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
               <div style={{ fontSize: '15px', fontWeight: '700', color: '#4a5568', marginBottom: '8px' }}>No templates yet</div>
               <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500', marginBottom: '20px' }}>
@@ -254,8 +261,9 @@ export default function AssignDietPlan() {
               const isRecommended = user && template.targetGoal === user.goal
               const gc = goalColors[template.targetGoal] ?? goalColors['General Health']
               const days = buildDays(template)
-              const firstDay = template.days?.[0]
-              const totalCals = (firstDay?.meals ?? []).reduce((s, m) => s + (m.calories || 0), 0)
+              const templateDays = template.days ?? []
+              const mealsPerDay = templateDays[0]?.meals?.length ?? 0
+              const totalCals = templateDays[0]?.meals?.reduce((s, m) => s + (m.calories ?? 0), 0) ?? 0
 
               return (
                 <div
@@ -287,10 +295,10 @@ export default function AssignDietPlan() {
                           {template.targetGoal}
                         </span>
                         <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
-                          7 days
+                          {template.days?.length ?? 7} days
                         </span>
                         <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
-                          {firstDay?.meals.length ?? 0} meals/day
+                          {mealsPerDay} meals/day
                         </span>
                         {totalCals > 0 && (
                           <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}>
@@ -353,7 +361,7 @@ export default function AssignDietPlan() {
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                                       <div style={{ fontSize: '13px', fontWeight: '700', color: '#0d1b3e' }}>{meal.name || `Meal ${idx + 1}`}</div>
                                       <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                        <Clock size={10} /> {meal.time}
+                                        <Clock size={10} /> {formatTime12h(meal.time)}
                                       </span>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '10px' }}>
@@ -373,7 +381,7 @@ export default function AssignDietPlan() {
                                       ].map((m) => (
                                         <div key={m.label} style={{ textAlign: 'center', padding: '4px', borderRadius: '6px', background: '#f8fafd' }}>
                                           <div style={{ fontSize: '10px', fontWeight: '700', color: m.color }}>{m.label}</div>
-                                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#0d1b3e' }}>{m.value || '—'}</div>
+                                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#0d1b3e' }}>{m.value != null && m.value > 0 ? m.value : '—'}</div>
                                           <div style={{ fontSize: '9px', color: '#b0bdd8' }}>{m.unit}</div>
                                         </div>
                                       ))}
@@ -399,7 +407,7 @@ export default function AssignDietPlan() {
         </div>
 
         {/* Action Bar */}
-        <div className="r-save-bar assign-bottom-bar" style={{ background: 'white', borderRadius: '20px', padding: '20px 28px', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-5 sm:px-7 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
           <div>
             {selectedPlan ? (
               <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>

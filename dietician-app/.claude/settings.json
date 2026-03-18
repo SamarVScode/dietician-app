@@ -16,7 +16,22 @@
       "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules/expo -name tsconfig*)",
       "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/mobile/node_modules/expo -name tsconfig*)",
       "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules -path */@firebase/app/package.json -not -path */node_modules/*/node_modules/*)",
-      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules -path */@firebase/app/package.json)"
+      "Bash(find /c/Users/User/Desktop/dietician-app/dietician-app/node_modules -path */@firebase/app/package.json)",
+      "WebFetch(domain:www.nativewind.dev)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "Bash(npx vite:*)",
+      "Bash(npm ls:*)",
+      "Bash(tasklist)",
+      "Bash(find c:/Users/User/Desktop/dietician-app/dietician-app/node_modules/@expo/cli -name *metro* -type f)",
+      "Bash(xargs grep:*)",
+      "Bash(find c:/Users/User/Desktop/dietician-app/dietician-app/node_modules/@expo/metro/build -name *resolveConfig* -o -name *config*)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Read(//c/Users/User/AppData/Local/Temp/claude/c--Users-User-Desktop-dietician-app-dietician-app/537976b8-d2f5-4e47-8af6-9fac61b70d6a/tasks/**)",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill /F /IM node.exe /FI \"WINDOWTITLE eq *metro*\")",
+      "Bash(npm view:*)",
+      "Bash(npx expo-sdk-tools@latest --version)"
     ]
   }
 }

@@ -7,10 +7,18 @@
     "functions",
     "shared"
   ],
+  "overrides": {
+    "@types/react": "~18.3.28",
+    "@types/react-dom": "~18.3.5"
+  },
   "scripts": {
     "dashboard:dev": "npm run dev --workspace=dashboard",
     "mobile:start": "npm run start --workspace=mobile",
     "functions:serve": "npm run serve --workspace=functions",
     "build": "npm run build --workspaces"
+  },
+  "dependencies": {
+    "@types/react": "~18.3.28",
+    "@types/react-dom": "~18.3.5"
   }
 }

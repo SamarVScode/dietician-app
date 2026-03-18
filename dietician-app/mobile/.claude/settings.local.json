@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npx expo:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"const pkg = require\\(''./node_modules/firebase/package.json''\\); console.log\\(pkg.version\\)\")",
+      "Bash(node -e \"const m = require\\(''./node_modules/firebase/auth/react-native''\\); console.log\\(Object.keys\\(m\\).filter\\(k => k.includes\\(''ersist''\\)\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''./node_modules/firebase/auth''\\); console.log\\(Object.keys\\(m\\).filter\\(k => k.toLowerCase\\(\\).includes\\(''persist''\\) || k.toLowerCase\\(\\).includes\\(''native''\\)\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''./node_modules/@firebase/auth''\\); console.log\\(Object.keys\\(m\\).filter\\(k => k.toLowerCase\\(\\).includes\\(''persist''\\) || k.toLowerCase\\(\\).includes\\(''native''\\)\\)\\)\")",
+      "Bash(grep '\"\"version\"\"' \"C:/Users/User/Desktop/dietician-app/dietician-app/mobile/node_modules/@types/react/package.json\")",
+      "Bash(grep '\"\"version\"\"' \"C:/Users/User/Desktop/dietician-app/dietician-app/node_modules/@types/react/package.json\")",
+      "Bash(grep -E \"^react$\")",
+      "Bash(grep '\"\"version\"\"' \"C:/Users/User/Desktop/dietician-app/dietician-app/node_modules/react-native-paper/package.json\")",
+      "Bash(node -e \"const p = require\\(''C:/Users/User/Desktop/dietician-app/dietician-app/node_modules/react-native-paper/package.json''\\); console.log\\(''rnp version:'', p.version, ''\\\\npeerDeps:'', JSON.stringify\\(p.peerDependencies\\)\\)\")",
+      "Bash(npm ls:*)",
+      "Bash(grep -rn \"useOptimistic\\\\|useActionState\\\\|use\\(\" C:/Users/User/Desktop/dietician-app/dietician-app/dashboard/src --include=*.tsx --include=*.ts)",
+      "Bash(node:*)"
+    ]
+  }
+}

@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Patients from './pages/Patients'
 import CreateUser from './pages/CreateUser'
 import UserProfile from './pages/UserProfile'
 import AssignDietPlan from './pages/AssignDietPlan'
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
           <Route path="/users/new" element={<ProtectedRoute><CreateUser /></ProtectedRoute>} />
           <Route path="/users/:id" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
           <Route path="/users/:id/plan" element={<ProtectedRoute><AssignDietPlan /></ProtectedRoute>} />

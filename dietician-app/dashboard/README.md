@@ -14,10 +14,11 @@ A web-based admin dashboard for dieticians to manage patients, assign diet plans
 | Server state | TanStack Query v5 |
 | Auth state | Zustand |
 | Backend / DB | Firebase Auth + Firestore |
-| Styling | Inline styles + `responsive.css` (breakpoints: ≤1024px, ≤640px, ≤400px) |
+| Styling | Tailwind CSS v4 + inline styles + `responsive.css` (breakpoints: ≤1024px, ≤640px, ≤400px) |
 | Charts | Recharts |
 | Icons | Lucide React |
 | Toast notifications | React Hot Toast |
+| AI Macros | OpenRouter API (`google/gemma-3n-e2b-it:free`) with Firestore caching |
 
 ---
 
@@ -30,11 +31,16 @@ dashboard/
     components/
       layout/                # PageWrapper, Header, Sidebar, ProtectedRoute
       dietplan/              # MealBuilder, TemplateForm, mealUtils, AIPlanGenerator, etc.
+        mealUtils.ts         # Shared types (Meal, FoodItem, DayPlan), helpers, formatTime12h
+        MealBuilder.tsx      # Visual meal editor with time picker, food items, macros
+        TemplateForm.tsx     # Template editor with duration-aware day tabs
+        aiService.ts         # OpenRouter AI integration for food macro lookup
       reports/               # AIInsights, ReportDetail, charts
       users/                 # CreateUserForm, EditUserForm, UserCard, etc.
       ui/                    # Shared UI primitives (Button, Modal, Toast, etc.)
     services/
       firebase.ts            # App, Auth, Firestore initialisation
+      aiService.ts           # OpenRouter API + Firestore foods cache for macro detection
       settingsService.ts     # CRUD for settings/{category}/items
     hooks/
       useSettings.ts         # Fetches + mutates settings dropdown options
@@ -102,7 +108,7 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which listens to Fir
 
 ## Firebase Collections & Schema
 
-The app uses **3 top-level collections** and **1 subcollection**.
+The app uses **4 top-level collections** and **1 subcollection**.
 
 ---
 
@@ -186,20 +192,26 @@ users/
   templateId:    string | null   // ID of the source template, or null if custom
   templateName:  string          // Display name, e.g. "Weight Loss Plan — Week 1"
 
-  days: [                        // Always 7 entries (Mon–Sun)
+  days: [                        // 7, 15, or 30 entries depending on plan duration
     {
-      day:       number          // 1 = Monday … 7 = Sunday
-      dayName:   string          // "Monday" | "Tuesday" | … | "Sunday"
+      day:       number          // 1-based index (1 = first day)
+      dayName:   string          // "Monday"–"Sunday" for 7-day, "Day 1"–"Day N" for 15/30-day
       isOverride: boolean        // legacy field — always false in new plans
       meals: [
         {
           id:       string       // random alphanumeric, e.g. "k3f9az"
           name:     string       // e.g. "Breakfast"
-          time:     string       // e.g. "8:00 AM"
+          time:     string       // 24h format, e.g. "08:00" (used for notifications)
           items: [
-            { name: string }     // food item name, e.g. "Oats with milk"
+            {
+              name:     string   // food item name, e.g. "Oats with milk"
+              calories?: number  // auto-fetched via AI on save
+              protein?:  number
+              carbs?:    number
+              fats?:     number
+            }
           ]
-          calories: number       // kcal
+          calories: number       // kcal (auto-summed from items on save)
           protein:  number       // grams
           carbs:    number       // grams
           fats:     number       // grams
@@ -219,7 +231,7 @@ users/
 
 ### Collection: `templates`
 
-Reusable weekly diet plans created by the admin. Each template stores 7 independent days.
+Reusable diet plan templates created by the admin. Each template supports 7-day (weekly), 15-day, or 30-day (monthly) durations.
 
 ```
 templates/
@@ -233,20 +245,27 @@ templates/
   name:        string    // e.g. "Keto Weight Loss Plan"
   description: string    // optional free-text description
   targetGoal:  string    // e.g. "Weight Loss" — used for recommendation matching
+  duration:    number    // 7 | 15 | 30
 
-  days: [                // Always 7 entries (Mon–Sun)
+  days: [                // 7, 15, or 30 entries
     {
-      dayIndex: number   // 0 = Monday … 6 = Sunday
-      dayName:  string   // "Monday" | "Tuesday" | … | "Sunday"
+      dayIndex: number   // 0-based index
+      dayName:  string   // "Monday"–"Sunday" for 7-day, "Day 1"–"Day N" for 15/30-day
       meals: [
         {
           id:       string       // random alphanumeric
           name:     string       // e.g. "Lunch"
-          time:     string       // e.g. "1:00 PM"
+          time:     string       // 24h format, e.g. "13:00"
           items: [
-            { name: string }     // food item name
+            {
+              name:     string   // food item name
+              calories?: number  // auto-fetched via AI
+              protein?:  number
+              carbs?:    number
+              fats?:     number
+            }
           ]
-          calories: number       // kcal
+          calories: number       // kcal (auto-summed from items)
           protein:  number       // grams
           carbs:    number       // grams
           fats:     number       // grams
@@ -261,7 +280,7 @@ templates/
 }
 ```
 
-> **Note:** `templates[].days[].dayIndex` is 0-based. When a template is assigned to a patient, each day is mapped to `dietPlans[].days[].day` which is 1-based (`dayIndex + 1`).
+> **Note:** `templates[].days[].dayIndex` is 0-based. When a template is assigned to a patient, each day is mapped to `dietPlans[].days[].day` which is 1-based (`dayIndex + 1`). Old templates without `duration` default to 7.
 
 ---
 
@@ -308,6 +327,35 @@ settings/
 
 ---
 
+### Collection: `foods`
+
+AI macro cache. One document per unique food name. Prevents repeated API calls for the same food item.
+
+```
+foods/
+  {auto-id}/
+```
+
+#### Schema
+
+```typescript
+{
+  name:      string   // lowercase, trimmed, e.g. "chicken breast"
+  calories:  number   // kcal, e.g. 165
+  protein:   number   // grams, e.g. 31
+  carbs:     number   // grams, e.g. 0
+  fats:      number   // grams, e.g. 3
+  createdAt: string   // ISO 8601
+}
+```
+
+When a diet plan is saved, each food item without macros triggers a lookup:
+1. Check `foods` collection for a matching `name`
+2. If found → use cached macros
+3. If not → call OpenRouter API (`google/gemma-3n-e2b-it:free`) → parse JSON response → save to `foods` → return macros
+
+---
+
 ### Firebase Auth
 
 The admin account is a standard Firebase Auth user (email + password).
@@ -327,13 +375,17 @@ Patient credentials are stored in plain text in the `users` Firestore document s
 
 `/templates` — `Templates.tsx`
 
-- Templates are reusable weekly plans stored in `templates/`.
-- Each has **7 independent day entries** (Monday–Sunday), each with its own meals array.
-- The dietician edits each day via day tabs — no base-meals/override layers.
+- Templates are reusable plans stored in `templates/`.
+- **Duration picker** — when creating a template, the admin first picks a duration: Weekly (7 days), 15 Days, or Monthly (30 days).
+- Each template has independent day entries, each with its own meals array.
+- The dietician edits each day via scrollable day tabs — no base-meals/override layers.
+- **Meal time** — each meal has a proper time picker (`<input type="time">`) stored in 24h format (e.g. `"08:00"`, `"13:30"`), displayed as 12h (e.g. `8:00 AM`). Used for future notification scheduling.
+- **AI macro enrichment** — on save, all food items without macros are auto-enriched via OpenRouter API. Macros are cached in Firestore `foods` collection. Meal-level macros are auto-summed from food items.
 - **Copy helpers:**
-  - "Apply to all days" — copies current day's meals to all 7 days.
+  - "Apply to all days" — copies current day's meals to all days.
   - "Copy from" — pastes another day's meals into the current day.
   - Per-meal "Copy to days" — appends a single meal to any chosen subset of days.
+- Template cards show meals/day, kcal/day, and target goal.
 - Delete button on each template card opens a confirmation modal.
 
 ---
@@ -355,7 +407,7 @@ The Diet Plan tab has four modes:
 | Mode | Trigger | What it does |
 |---|---|---|
 | **Template** | "Use a Template" button | Pick a saved template; shows allergen warnings; assigns directly |
-| **Custom** | "Create Custom Plan" button | Build a 7-day plan from scratch with day tabs + MealBuilder |
+| **Custom** | "Create Custom Plan" button | Pick duration (7/15/30 days), then build plan from scratch with day tabs + MealBuilder. AI macro enrichment on save. |
 | **Edit** | "Edit Plan" on active plan | Edit any day of the active plan in place |
 | **Remove** | "Remove" on active plan | Deletes the `dietPlans` document; resets `status` to `no-plan` |
 
@@ -418,8 +470,10 @@ npm run preview   # preview production build locally
 - Create patient — full 5-step form + Firebase Auth creation + Firestore write
 - Patient profile — view, edit (Profile Info tab only), delete
 - Body composition data — entry on create form, display and edit on profile
-- Diet plan — assign from template, build custom 7-day plan, edit active plan, remove plan
-- Diet plan templates — full CRUD with 7-day independent editor and copy helpers
+- Diet plan — assign from template, build custom plan (7/15/30 days), edit active plan, remove plan
+- Diet plan templates — full CRUD with duration picker (7/15/30 days), day editor, and copy helpers
+- AI macro auto-detection — food item macros fetched via OpenRouter API on save, cached in Firestore `foods` collection
+- Proper time picker for meal times (24h storage, 12h display)
 - Settings — manage custom dropdown options
 - Credentials tab — view, copy userId/password/email
 - Fully responsive (hamburger sidebar, compact mobile layouts)
@@ -436,7 +490,6 @@ These files exist as stubs and are not yet implemented:
 | `src/services/authService.ts` | Auth helper functions |
 | `src/services/userService.ts` | Users CRUD helpers |
 | `src/services/reportService.ts` | Daily health reports read/write |
-| `src/services/aiService.ts` | AI diet plan generation |
 
 ### Hooks
 | File | Purpose |
