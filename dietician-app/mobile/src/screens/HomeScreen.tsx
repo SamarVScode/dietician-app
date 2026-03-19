@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   RefreshControl,
+  Text,
+  ActivityIndicator,
+  Animated,
 } from 'react-native';
-import { Text, ActivityIndicator, Divider } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -17,11 +19,19 @@ import {
   getTotalMacros,
   formatTime12h,
 } from '../services/dietPlanService';
-import type { DietPlan, DayPlan, Meal, FoodItem } from '../types';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme/theme';
-import { Card } from '../components/Card';
-import { SectionLabel } from '../components/SectionLabel';
-import { MacroPill } from '../components/MacroPill';
+import { fetchTodayWaterLogs } from '../services/reportService';
+import type { DietPlan, DayPlan, Meal, FoodItem, WaterLog } from '../types';
+import { colors } from '../theme/colors';
+import { spacing, radius } from '../theme/spacing';
+import { AppBackground } from '../components/AppBackground';
+import { Header } from '../components/Header';
+import { FrostedCard } from '../components/FrostedCard';
+import { SectionTitle } from '../components/SectionTitle';
+import { NutCircle } from '../components/NutStat';
+import { FoodRow } from '../components/FoodRow';
+import { MacroTagColumn } from '../components/MacroTag';
+import { AnimatedCard } from '../components/AnimatedCard';
+import { PressableScale } from '../components/PressableScale';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -47,115 +57,129 @@ function getUpcomingMeal(meals: Meal[]): Meal | null {
   );
 }
 
-/* ─── Macro strip ─────────────────────────────────────── */
-function MacroStrip({ calories, protein, carbs, fats }: {
+/* ─── Circular nutrition row ──────────────────────────── */
+function NutritionCircles({ calories, protein, carbs, fats }: {
   calories: number; protein: number; carbs: number; fats: number;
 }) {
-  const items = [
-    { label: 'Cal',     value: Math.round(calories), unit: 'kcal', color: Colors.caloriesColor },
-    { label: 'Protein', value: Math.round(protein),  unit: 'g',    color: Colors.proteinColor },
-    { label: 'Carbs',   value: Math.round(carbs),    unit: 'g',    color: Colors.carbsColor },
-    { label: 'Fats',    value: Math.round(fats),     unit: 'g',    color: Colors.fatsColor },
-  ];
   return (
-    <Card shadow="sm" padding={0} style={styles.macroStrip}>
-      {items.map(({ label, value, unit, color }, idx) => (
-        <React.Fragment key={label}>
-          {idx > 0 && <View style={styles.macroDivider} />}
-          <View style={styles.macroItem}>
-            <View style={[styles.macroDot, { backgroundColor: color + '22' }]}>
-              <View style={[styles.macroDotInner, { backgroundColor: color }]} />
-            </View>
-            <Text style={[styles.macroVal, { color }]}>{value}</Text>
-            <Text style={styles.macroUnit}>{unit}</Text>
-            <Text style={styles.macroLbl}>{label}</Text>
-          </View>
-        </React.Fragment>
-      ))}
-    </Card>
+    <FrostedCard>
+      <View style={styles.circleRow}>
+        <NutCircle
+          val={String(Math.round(calories))}
+          label="Calories"
+          accent={colors.accentBlue}
+          bgTint="rgba(111,174,255,0.18)"
+        />
+        <NutCircle
+          val={`${Math.round(protein)}g`}
+          label="Protein"
+          accent={colors.accentGreen}
+          bgTint="rgba(77,219,160,0.18)"
+        />
+        <NutCircle
+          val={`${Math.round(carbs)}g`}
+          label="Carbs"
+          accent={colors.accentYellow}
+          bgTint="rgba(255,200,74,0.18)"
+        />
+        <NutCircle
+          val={`${Math.round(fats)}g`}
+          label="Fats"
+          accent={colors.accentPink}
+          bgTint="rgba(255,112,150,0.18)"
+        />
+      </View>
+    </FrostedCard>
   );
 }
 
 /* ─── Upcoming meal card ─────────────────────────────── */
 function UpcomingMealCard({ meal }: { meal: Meal }) {
   return (
-    <Card shadow="md" style={styles.upcomingCard} padding={0}>
-      {/* Gradient top bar */}
-      <LinearGradient
-        colors={[Colors.primary, Colors.primaryMid]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.upcomingBar}
-      >
-        <View style={styles.upcomingBarLeft}>
-          <View style={styles.upcomingDot} />
-          <Text style={styles.upcomingLabel}>UP NEXT</Text>
+    <FrostedCard>
+      {/* Header row: icon + name/kcal + macro tags */}
+      <View style={styles.mealTop}>
+        <View style={styles.mealIcon}>
+          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.mealIconOverlay} />
+          <MaterialCommunityIcons name="silverware-fork-knife" size={22} color="rgba(255,255,255,0.85)" />
         </View>
-        {!!meal.time && (
-          <View style={styles.upcomingTimeRow}>
-            <MaterialCommunityIcons name="clock-outline" size={12} color="rgba(255,255,255,0.8)" />
-            <Text style={styles.upcomingBarTime}>{formatTime12h(meal.time)}</Text>
-          </View>
-        )}
-      </LinearGradient>
-
-      <View style={styles.upcomingBody}>
-        {/* Meal name + calories */}
-        <View style={styles.upcomingHeader}>
-          <Text style={styles.upcomingName} numberOfLines={1}>{meal.name}</Text>
-          <View style={styles.calBadge}>
-            <Text style={styles.calBadgeText}>🔥 {Math.round(meal.calories)}</Text>
-            <Text style={styles.calBadgeUnit}>kcal</Text>
+        <View style={styles.mealInfo}>
+          <Text style={styles.mealName}>{meal.name}</Text>
+          <View style={styles.mealKcalRow}>
+            <View style={styles.mealDot} />
+            <Text style={styles.mealKcal}>{Math.round(meal.calories)} kcal total</Text>
           </View>
         </View>
-
-        {/* Macro pills */}
-        <View style={styles.pillRow}>
-          <MacroPill label="P" value={meal.protein} color={Colors.proteinColor} />
-          <MacroPill label="C" value={meal.carbs}   color={Colors.carbsColor} />
-          <MacroPill label="F" value={meal.fats}    color={Colors.fatsColor} />
-        </View>
-
-        {/* Food items */}
-        {meal.items.length > 0 && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.foodList}>
-              {meal.items.map((item: FoodItem, idx: number) => (
-                <View key={idx} style={styles.foodRow}>
-                  <View style={styles.foodDot} />
-                  <Text style={styles.foodName} numberOfLines={1}>{item.name}</Text>
-                  {item.calories != null && (
-                    <Text style={styles.foodCal}>{item.calories} kcal</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          </>
-        )}
-
-        {!!meal.notes && (
-          <View style={styles.notesBg}>
-            <Text style={styles.notesText}>📝 {meal.notes}</Text>
-          </View>
+        {(meal.protein > 0 || meal.carbs > 0 || meal.fats > 0) && (
+          <MacroTagColumn protein={meal.protein} carbs={meal.carbs} fats={meal.fats} />
         )}
       </View>
-    </Card>
+
+      {/* Food items */}
+      {meal.items.length > 0 && (
+        <View style={styles.foodList}>
+          {meal.items.map((item: FoodItem, idx: number) => (
+            <FoodRow key={idx} name={item.name} kcal={item.calories} />
+          ))}
+        </View>
+      )}
+
+      {!!meal.notes && <Text style={styles.notesText}>{meal.notes}</Text>}
+    </FrostedCard>
+  );
+}
+
+/* ─── Water progress bar ─────────────────────────────── */
+function WaterProgressBar({
+  consumedMl, targetMl, completedSlots, totalSlots,
+}: {
+  consumedMl: number; targetMl: number; completedSlots: number; totalSlots: number;
+}) {
+  const progress  = targetMl > 0 ? Math.min(consumedMl / targetMl, 1) : 0;
+  const consumedL = (consumedMl / 1000).toFixed(1);
+  const targetL   = (targetMl  / 1000).toFixed(1);
+  const pct       = Math.round(progress * 100);
+
+  return (
+    <FrostedCard>
+      <View style={styles.waterHeader}>
+        <View style={styles.waterIconWrap}>
+          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.waterIconOverlay} />
+          <MaterialCommunityIcons name="water" size={20} color={colors.accentBlue} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.waterTitle}>Today's Water</Text>
+          <Text style={styles.waterSub}>{completedSlots} of {totalSlots} reminders done</Text>
+        </View>
+        <View style={styles.waterAmountWrap}>
+          <Text style={styles.waterAmountValue}>{consumedL}</Text>
+          <Text style={styles.waterAmountTarget}>/{targetL} L</Text>
+        </View>
+      </View>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+      </View>
+      <Text style={styles.waterPct}>{pct}% of daily goal</Text>
+    </FrostedCard>
   );
 }
 
 /* ─── Empty state ────────────────────────────────────── */
 function EmptyPlan() {
   return (
-    <Card shadow="sm" style={styles.emptyCard}>
+    <FrostedCard style={styles.emptyCard}>
       <View style={styles.emptyIconWrap}>
-        <MaterialCommunityIcons name="food-off-outline" size={40} color={Colors.primary} />
+        <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={styles.emptyIconOverlay} />
+        <MaterialCommunityIcons name="food-off-outline" size={40} color={colors.white} />
       </View>
       <Text style={styles.emptyTitle}>No Diet Plan Yet</Text>
       <Text style={styles.emptySub}>
         Your dietician hasn't assigned a plan yet.{'\n'}Check back soon!
       </Text>
-    </Card>
+    </FrostedCard>
   );
 }
 
@@ -165,6 +189,7 @@ export default function HomeScreen() {
   const [plan, setPlan]             = useState<DietPlan | null>(null);
   const [todayPlan, setTodayPlan]   = useState<DayPlan | null>(null);
   const [macros, setMacros]         = useState({ calories: 0, protein: 0, carbs: 0, fats: 0 });
+  const [waterLogs, setWaterLogs]   = useState<WaterLog[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
@@ -172,7 +197,10 @@ export default function HomeScreen() {
   const loadPlan = useCallback(async () => {
     if (!userProfile?.id) { setLoading(false); return; }
     try {
-      const activePlan = await fetchActiveDietPlan(userProfile.id);
+      const [activePlan, logs] = await Promise.all([
+        fetchActiveDietPlan(userProfile.id),
+        fetchTodayWaterLogs(userProfile.id),
+      ]);
       if (activePlan) {
         setPlan(activePlan);
         const today = getTodaysDayPlan(activePlan);
@@ -182,6 +210,7 @@ export default function HomeScreen() {
         setPlan(null);
         setTodayPlan(null);
       }
+      setWaterLogs(logs);
     } catch (e) {
       console.error('Failed to load diet plan:', e);
     } finally {
@@ -201,160 +230,168 @@ export default function HomeScreen() {
   const goal         = userProfile?.goal ?? '';
   const upcomingMeal = todayPlan ? getUpcomingMeal(todayPlan.meals) : null;
 
+  /* Header fade-in animation */
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(headerOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* ── Gradient header ── */}
-      <LinearGradient
-        colors={Colors.headerGradient}
-        style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        {/* Background orb */}
-        <View style={styles.headerOrb} />
+    <AppBackground>
+      <Animated.View style={{ paddingTop: insets.top, opacity: headerOpacity }}>
+        <Header
+          name={firstName}
+          avatarInitial={(userProfile?.name?.[0] ?? '?').toUpperCase()}
+        />
+      </Animated.View>
 
-        <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.headerName}>{firstName}</Text>
-          </View>
-          <View style={styles.avatarChip}>
-            <Text style={styles.avatarInitial}>
-              {(userProfile?.name?.[0] ?? '?').toUpperCase()}
-            </Text>
-          </View>
-        </View>
-      </LinearGradient>
-
-      {/* ── Body ── */}
       <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
+            tintColor={colors.white}
+            colors={[colors.white]}
           />
         }
       >
         {loading ? (
-          <ActivityIndicator style={styles.loader} color={Colors.primary} size="large" />
+          <ActivityIndicator style={styles.loader} color={colors.white} size="large" />
         ) : !plan || !todayPlan ? (
           <EmptyPlan />
         ) : (
           <>
             {/* Goal card */}
             {!!goal && (
-              <Card shadow="sm" style={styles.goalCard} padding={0}>
-                <LinearGradient
-                  colors={[Colors.primaryLight, '#F5F3FF']}
-                  style={styles.goalGrad}
-                >
-                  <Text style={styles.goalCardLabel}>YOUR GOAL</Text>
-                  <Text style={styles.goalCardText}>{goal}</Text>
-                </LinearGradient>
-              </Card>
+              <AnimatedCard delay={60}>
+                <PressableScale>
+                  <FrostedCard style={styles.goalCard}>
+                    <View style={styles.goalEyebrow}>
+                      <MaterialCommunityIcons name="trending-up" size={12} color="#5db8d8" />
+                      <Text style={styles.goalEyebrowText}>Current Goal</Text>
+                    </View>
+                    <Text style={styles.goalText}>{goal}</Text>
+                  </FrostedCard>
+                </PressableScale>
+              </AnimatedCard>
             )}
 
-            <SectionLabel title="Today's Nutrition" />
-            <MacroStrip
-              calories={macros.calories}
-              protein={macros.protein}
-              carbs={macros.carbs}
-              fats={macros.fats}
-            />
+            <AnimatedCard delay={130}>
+              <SectionTitle title="Today's Nutrition" />
+              <NutritionCircles
+                calories={macros.calories}
+                protein={macros.protein}
+                carbs={macros.carbs}
+                fats={macros.fats}
+              />
+            </AnimatedCard>
 
-            <View style={{ height: Spacing.lg }} />
-            <SectionLabel title="Upcoming Meal" />
-
-            {upcomingMeal ? (
-              <UpcomingMealCard meal={upcomingMeal} />
-            ) : (
-              <Card shadow="sm" style={styles.noMeals}>
-                <Text style={styles.noMealsText}>No meals planned for today.</Text>
-              </Card>
+            {/* Water progress */}
+            {!!plan.waterIntakeMl && plan.waterIntakeMl > 0 && (
+              <AnimatedCard delay={200}>
+                <View style={styles.sectionGap} />
+                <SectionTitle title="Hydration" />
+                <PressableScale>
+                  <WaterProgressBar
+                    consumedMl={waterLogs
+                      .filter(l => l.completed)
+                      .reduce((s, l) => s + l.amountMl, 0)}
+                    targetMl={plan.waterIntakeMl}
+                    completedSlots={waterLogs.filter(l => l.completed).length}
+                    totalSlots={plan.waterSchedule?.length ?? 0}
+                  />
+                </PressableScale>
+              </AnimatedCard>
             )}
+
+            <AnimatedCard delay={270}>
+              <View style={styles.sectionGap} />
+              <SectionTitle title="Upcoming Meal" />
+
+              {upcomingMeal ? (
+                <PressableScale>
+                  <UpcomingMealCard meal={upcomingMeal} />
+                </PressableScale>
+              ) : (
+                <FrostedCard>
+                  <Text style={styles.noMealsText}>No meals planned for today.</Text>
+                </FrostedCard>
+              )}
+            </AnimatedCard>
           </>
         )}
 
-        <View style={{ height: 32 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </View>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  scroll:        { flex: 1 },
+  scrollContent: { paddingHorizontal: spacing.screenPadding, paddingTop: 8, paddingBottom: 110 },
+  loader:        { marginTop: 60 },
+  sectionGap:    { height: spacing.sectionGap },
 
-  /* Header */
-  header:        { paddingHorizontal: Spacing.lg, paddingBottom: 36, paddingTop: Spacing.md, overflow: 'hidden' },
-  headerOrb:     { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.06)', top: -70, right: -50 },
-  headerContent: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  greeting:      { color: 'rgba(255,255,255,0.6)', ...Typography.bodyMd },
-  headerName:    { color: '#FFFFFF', ...Typography.displayLg, marginTop: 2 },
-  avatarChip:    {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center', alignItems: 'center',
+  /* Circular nutrition row */
+  circleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
-  avatarInitial: { color: '#FFFFFF', ...Typography.headingMd },
 
-  /* Body */
-  body:        { flex: 1, marginTop: -18, borderTopLeftRadius: Radius.xxl, borderTopRightRadius: Radius.xxl, backgroundColor: Colors.background },
-  bodyContent: { paddingHorizontal: Spacing.md, paddingTop: Spacing.lg, paddingBottom: 110 },
-  loader:      { marginTop: 60 },
+  /* Goal card — frosted with gradient text feel */
+  goalCard:         { marginBottom: spacing.sectionGap },
+  goalEyebrow:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
+  goalEyebrowText:  { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', color: '#5db8d8' },
+  goalText:         { fontSize: 34, fontWeight: '900', color: colors.nameText, letterSpacing: -1 },
 
-  /* Goal card */
-  goalCard:      { marginBottom: Spacing.lg, overflow: 'hidden' },
-  goalGrad:      { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, borderRadius: Radius.xl },
-  goalCardLabel: { ...Typography.labelSm, color: Colors.primary, marginBottom: 8 },
-  goalCardText:  { ...Typography.displayMd, color: Colors.primaryDark },
+  /* Meal card — matching homePage.html reference */
+  mealTop:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  mealIcon:   {
+    width: 48, height: 48, borderRadius: 24,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
+    justifyContent: 'center', alignItems: 'center',
+    overflow: 'hidden',
+  },
+  mealIconOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  mealInfo:    { flex: 1 },
+  mealName:    { fontSize: 20, fontWeight: '900', color: colors.white, letterSpacing: -0.3 },
+  mealKcalRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  mealDot:     { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.mealKcal },
+  mealKcal:    { fontSize: 12.5, fontWeight: '600', color: colors.mealKcal },
+  foodList:    { gap: 0 },
+  notesText:   { fontSize: 13, fontWeight: '400', color: colors.mutedText, fontStyle: 'italic', marginTop: 10 },
 
-  /* Macro strip */
-  macroStrip:  { flexDirection: 'row', borderRadius: Radius.xl, paddingVertical: 16, paddingHorizontal: Spacing.sm, marginBottom: 0 },
-  macroItem:   { flex: 1, alignItems: 'center', gap: 3 },
-  macroDivider:{ width: 1, backgroundColor: Colors.surfaceVariant, marginVertical: 6 },
-  macroDot:    { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
-  macroDotInner: { width: 8, height: 8, borderRadius: 4 },
-  macroVal:    { ...Typography.headingSm, lineHeight: 20 },
-  macroUnit:   { ...Typography.caption, color: Colors.textMuted },
-  macroLbl:    { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-
-  /* Upcoming card */
-  upcomingCard:    { overflow: 'hidden' },
-  upcomingBar:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md, paddingVertical: 10 },
-  upcomingBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  upcomingDot:     { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.8)' },
-  upcomingLabel:   { ...Typography.labelSm, color: 'rgba(255,255,255,0.9)' },
-  upcomingTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  upcomingBarTime: { ...Typography.caption, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  upcomingBody:    { padding: Spacing.md },
-  upcomingHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  upcomingName:    { ...Typography.headingMd, color: Colors.text, flex: 1, marginRight: 8 },
-  calBadge:        { flexDirection: 'row', alignItems: 'baseline', gap: 2, backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full },
-  calBadgeText:    { ...Typography.labelLg, color: Colors.primaryDark },
-  calBadgeUnit:    { ...Typography.caption, color: Colors.primary },
-  pillRow:         { flexDirection: 'row', gap: 6, marginBottom: 4 },
-
-  /* Food list */
-  divider:  { marginVertical: 10, backgroundColor: Colors.surfaceVariant },
-  foodList: { gap: 6 },
-  foodRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  foodDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.primary + '66', flexShrink: 0 },
-  foodName: { flex: 1, ...Typography.bodySm, color: Colors.text },
-  foodCal:  { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-  notesBg:  { marginTop: 10, padding: 10, borderRadius: Radius.md, backgroundColor: Colors.primaryLight + '55' },
-  notesText:{ ...Typography.bodySm, color: Colors.textSecondary, fontStyle: 'italic', lineHeight: 18 },
+  /* Water */
+  waterHeader:      { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  waterIconWrap:    { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  waterIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(111,174,255,0.10)' },
+  waterTitle:       { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
+  waterSub:         { fontSize: 10, fontWeight: '500', color: colors.mutedText },
+  waterAmountWrap:  { alignItems: 'flex-end' },
+  waterAmountValue: { fontSize: 18, fontWeight: '700', color: colors.accentBlue },
+  waterAmountTarget:{ fontSize: 10, fontWeight: '500', color: colors.mutedText },
+  progressTrack:    { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden', marginBottom: 8 },
+  progressFill:     { height: 8, borderRadius: 4, backgroundColor: colors.accentBlue },
+  waterPct:         { fontSize: 10, fontWeight: '500', color: colors.mutedText, textAlign: 'right' },
 
   /* Empty */
-  emptyCard:    { alignItems: 'center', paddingVertical: 40, marginTop: 24 },
-  emptyIconWrap:{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.md },
-  emptyTitle:   { ...Typography.headingMd, color: Colors.text, marginBottom: 8 },
-  emptySub:     { ...Typography.bodyMd, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  noMeals:      { alignItems: 'center' },
-  noMealsText:  { color: Colors.textSecondary },
+  emptyCard:    { alignItems: 'center', marginTop: 24 },
+  emptyIconWrap:    { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
+  emptyIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
+  emptyTitle:   { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 8 },
+  emptySub:     { fontSize: 14, fontWeight: '400', color: colors.mutedText, textAlign: 'center', lineHeight: 22 },
+  noMealsText:  { color: colors.mutedText, textAlign: 'center' },
 });

@@ -1,20 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Text,
+  Animated,
 } from 'react-native';
-import { Text } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { signIn } from '../services/authService';
-import { Colors, Radius, Shadows, Spacing, Typography } from '../theme/theme';
+import { AppBackground } from '../components/AppBackground';
+import { GradientButton } from '../components/GradientButton';
+import { colors } from '../theme/colors';
+import { radius } from '../theme/spacing';
+
+/* Small frosted input wrapper — BlurView inside each field */
+function FrostedField({ children, focused }: { children: React.ReactNode; focused: boolean }) {
+  return (
+    <View style={[fieldStyles.outer, focused && fieldStyles.outerFocused]}>
+      <View style={[fieldStyles.clip, focused && fieldStyles.clipFocused]}>
+        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={[fieldStyles.overlay, focused && fieldStyles.overlayFocused]} />
+        <View style={fieldStyles.row}>{children}</View>
+      </View>
+    </View>
+  );
+}
+
+const fieldStyles = StyleSheet.create({
+  outer: { marginBottom: 16 },
+  outerFocused: {},
+  clip: {
+    borderRadius: radius.field,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    overflow: 'hidden',
+  },
+  clipFocused: {
+    borderColor: 'rgba(74,61,216,0.5)',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+  },
+  overlayFocused: {
+    backgroundColor: 'rgba(255,255,255,0.30)',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    height: 52,
+  },
+});
 
 export default function LoginScreen() {
   const [identifier, setIdentifier]     = useState('');
@@ -24,6 +67,30 @@ export default function LoginScreen() {
   const [error, setError]               = useState('');
   const [focusedField, setFocusedField] = useState<'id' | 'pw' | null>(null);
   const insets = useSafeAreaInsets();
+
+  /* Mount animations */
+  const brandOpacity = useRef(new Animated.Value(0)).current;
+  const brandTranslateY = useRef(new Animated.Value(-20)).current;
+  const sheetTranslateY = useRef(new Animated.Value(40)).current;
+  const sheetOpacity = useRef(new Animated.Value(0)).current;
+  const iconScale = useRef(new Animated.Value(0.7)).current;
+
+  useEffect(() => {
+    // Brand fades in and slides down
+    Animated.parallel([
+      Animated.timing(brandOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(brandTranslateY, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
+      Animated.spring(iconScale, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
+    ]).start();
+
+    // Sheet slides up with delay
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.spring(sheetTranslateY, { toValue: 0, tension: 60, friction: 14, useNativeDriver: true }),
+        Animated.timing(sheetOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      ]).start();
+    }, 150);
+  }, []);
 
   const handleSignIn = async () => {
     if (!identifier.trim() || !password.trim()) {
@@ -52,252 +119,197 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={Colors.loginGradient}
-      style={styles.bg}
-      start={{ x: 0.2, y: 0 }}
-      end={{ x: 0.8, y: 1 }}
-    >
-      {/* Decorative blobs */}
-      <View style={styles.blob1} />
-      <View style={styles.blob2} />
-      <View style={styles.blob3} />
+    <AppBackground>
+      {/* Top brand section — fixed height */}
+      <Animated.View style={[styles.top, { paddingTop: insets.top + 20, opacity: brandOpacity, transform: [{ translateY: brandTranslateY }] }]}>
+        <View style={styles.orb1} />
+        <View style={styles.orb2} />
 
-      {/* Brand section — outside KAV so it doesn't jump on keyboard */}
-      <View style={[styles.brand, { paddingTop: insets.top + 36 }]}>
-        <View style={styles.logoWrap}>
-          <LinearGradient
-            colors={['rgba(139,120,255,0.28)', 'rgba(91,76,245,0.12)']}
-            style={styles.logoGrad}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <MaterialCommunityIcons name="food-apple" size={40} color="#fff" />
-          </LinearGradient>
-          {/* Glow ring */}
-          <View style={styles.logoRing} />
-        </View>
+        <Animated.View style={[styles.appIcon, { transform: [{ scale: iconScale }] }]}>
+          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.appIconOverlay} />
+          <MaterialCommunityIcons name="food-apple" size={48} color="#fff" />
+        </Animated.View>
+
         <Text style={styles.appName}>DietPlan</Text>
         <Text style={styles.appTagline}>Your personalized nutrition companion</Text>
-      </View>
+      </Animated.View>
 
-      {/* Card + keyboard avoiding */}
-      <KeyboardAvoidingView
-        style={styles.kavWrapper}
-        behavior="padding"
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          bounces={false}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.cardScroll}
-        >
-          <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, 20) + 24 }]}>
+      {/* Sheet — flex:1 stretches to bottom of screen */}
+      <KeyboardAvoidingView style={styles.kavWrapper} behavior="padding">
+        <Animated.View style={[styles.sheet, { opacity: sheetOpacity, transform: [{ translateY: sheetTranslateY }] }]}>
+          <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.sheetOverlay} />
 
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.sheetScroll,
+              { paddingBottom: Math.max(insets.bottom, 20) + 24 },
+            ]}
+          >
             {/* Handle bar */}
             <View style={styles.handle} />
 
-            <Text style={styles.cardTitle}>Welcome back</Text>
-            <Text style={styles.cardSub}>Sign in to access your plan</Text>
+            <Text style={styles.welcomeTitle}>Welcome back</Text>
+            <Text style={styles.welcomeSub}>Sign in to access your plan</Text>
 
             {/* Email / User ID */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Email or User ID</Text>
-              <View style={[
-                styles.inputWrap,
-                focusedField === 'id' && styles.inputWrapFocused,
-              ]}>
-                <MaterialCommunityIcons
-                  name="account-outline"
-                  size={18}
-                  color={focusedField === 'id' ? Colors.primary : Colors.textMuted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. john@mail.com or USR001"
-                  placeholderTextColor={Colors.textMuted}
-                  value={identifier}
-                  onChangeText={t => { setIdentifier(t); setError(''); }}
-                  autoCapitalize="none"
-                  autoComplete="username"
-                  keyboardType="email-address"
-                  onFocus={() => setFocusedField('id')}
-                  onBlur={() => setFocusedField(null)}
-                />
-              </View>
-            </View>
+            <Text style={styles.fieldLabel}>Email or User ID</Text>
+            <FrostedField focused={focusedField === 'id'}>
+              <MaterialCommunityIcons
+                name="account-outline" size={18}
+                color="rgba(0,0,0,0.35)" style={styles.fieldIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. john@mail.com or USR001"
+                placeholderTextColor="rgba(0,0,0,0.3)"
+                value={identifier}
+                onChangeText={t => { setIdentifier(t); setError(''); }}
+                autoCapitalize="none"
+                autoComplete="username"
+                keyboardType="email-address"
+                onFocus={() => setFocusedField('id')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </FrostedField>
 
             {/* Password */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Password</Text>
-              <View style={[
-                styles.inputWrap,
-                focusedField === 'pw' && styles.inputWrapFocused,
-              ]}>
+            <Text style={styles.fieldLabel}>Password</Text>
+            <FrostedField focused={focusedField === 'pw'}>
+              <MaterialCommunityIcons
+                name="lock-outline" size={18}
+                color="rgba(0,0,0,0.35)" style={styles.fieldIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your password"
+                placeholderTextColor="rgba(0,0,0,0.3)"
+                value={password}
+                onChangeText={t => { setPassword(t); setError(''); }}
+                secureTextEntry={!showPassword}
+                onFocus={() => setFocusedField('pw')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(v => !v)}
+                style={styles.eyeBtn}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <MaterialCommunityIcons
-                  name="lock-outline"
-                  size={18}
-                  color={focusedField === 'pw' ? Colors.primary : Colors.textMuted}
-                  style={styles.inputIcon}
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={18} color="rgba(0,0,0,0.35)"
                 />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your password"
-                  placeholderTextColor={Colors.textMuted}
-                  value={password}
-                  onChangeText={t => { setPassword(t); setError(''); }}
-                  secureTextEntry={!showPassword}
-                  onFocus={() => setFocusedField('pw')}
-                  onBlur={() => setFocusedField(null)}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(v => !v)}
-                  style={styles.eyeBtn}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialCommunityIcons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={18}
-                    color={focusedField === 'pw' ? Colors.primary : Colors.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
+              </TouchableOpacity>
+            </FrostedField>
 
             {/* Error banner */}
             {!!error && (
               <View style={styles.errorRow}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={14} color={Colors.error} />
+                <MaterialCommunityIcons name="alert-circle-outline" size={14} color={colors.error} />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             )}
 
             {/* Sign in button */}
-            <TouchableOpacity
-              style={[styles.fabBtn, loading && styles.fabBtnDisabled]}
-              onPress={handleSignIn}
-              disabled={loading}
-              activeOpacity={0.86}
-            >
-              <LinearGradient
-                colors={loading ? ['#8B80FA', '#8B80FA'] : [Colors.primary, Colors.primaryDark]}
-                style={styles.fabGrad}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.fabText}>Sign In</Text>
-                    <View style={styles.fabIconWrap}>
-                      <MaterialCommunityIcons name="arrow-right" size={20} color={Colors.primary} />
-                    </View>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+            <View style={styles.signinRow}>
+              {loading ? (
+                <ActivityIndicator color={colors.btnGradStart} size="small" />
+              ) : (
+                <GradientButton label="Sign In" onPress={handleSignIn} align="right" />
+              )}
+            </View>
 
-            {/* Footer */}
+            {/* Footer — pushed to bottom */}
+            <View style={styles.footerSpacer} />
             <View style={styles.footer}>
-              <MaterialCommunityIcons name="shield-lock-outline" size={13} color={Colors.textMuted} />
+              <MaterialCommunityIcons name="shield-lock-outline" size={13} color="rgba(0,0,0,0.4)" />
               <Text style={styles.footerText}>Secured with Firebase Authentication</Text>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </Animated.View>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  bg:         { flex: 1 },
   kavWrapper: { flex: 1 },
-  cardScroll: { flexGrow: 1, justifyContent: 'flex-end' },
 
-  /* Blobs */
-  blob1: { position: 'absolute', width: 320, height: 320, borderRadius: 160, backgroundColor: 'rgba(91,76,245,0.18)', top: -100, right: -80 },
-  blob2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(55,48,163,0.22)', bottom: 240, left: -70 },
-  blob3: { position: 'absolute', width: 150, height: 150, borderRadius: 75,  backgroundColor: 'rgba(124,110,250,0.14)', bottom: 90, right: 10 },
-
-  /* Brand */
-  brand:     { alignItems: 'center', paddingHorizontal: Spacing.lg, paddingBottom: 44 },
-  logoWrap:  { marginBottom: Spacing.lg, position: 'relative' },
-  logoGrad:  {
-    width: 88, height: 88, borderRadius: Radius.xxl,
+  /* Top brand section */
+  top: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingBottom: 32, overflow: 'hidden',
+  },
+  orb1: {
+    position: 'absolute', width: 280, height: 280, borderRadius: 140,
+    backgroundColor: 'rgba(255,255,255,0.08)', top: '30%', left: '35%',
+  },
+  orb2: {
+    position: 'absolute', width: 160, height: 160, borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.06)', top: '8%', left: '5%',
+  },
+  appIcon: {
+    width: 88, height: 88, borderRadius: 24,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1.5, borderColor: 'rgba(139,120,255,0.3)',
+    marginBottom: 24, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25, shadowRadius: 32, elevation: 12,
   },
-  logoRing:  {
-    position: 'absolute', inset: -6,
-    borderRadius: Radius.xxl + 6,
-    borderWidth: 1, borderColor: 'rgba(139,120,255,0.12)',
-  },
-  appName:    { color: '#FFFFFF', ...Typography.displayMd },
-  appTagline: { color: 'rgba(255,255,255,0.45)', ...Typography.bodyMd, marginTop: 6, textAlign: 'center' },
+  appIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(90,75,195,0.7)' },
+  appName:    { fontSize: 32, fontWeight: '700', color: '#fff', letterSpacing: -0.5, marginBottom: 8 },
+  appTagline: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.5)' },
 
-  /* Card */
-  card: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: Radius.xxl + 4,
-    borderTopRightRadius: Radius.xxl + 4,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 24,
+  /* Sheet — flex:1 so it extends all the way to the bottom */
+  sheet: {
+    flex: 1,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', borderBottomWidth: 0,
+    overflow: 'hidden',
   },
-  handle:    { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.surfaceVariant, alignSelf: 'center', marginBottom: 28 },
-  cardTitle: { ...Typography.displaySm, color: Colors.text, marginBottom: 4 },
-  cardSub:   { ...Typography.bodyMd, color: Colors.textSecondary, marginBottom: 28 },
+  sheetOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.40)' },
+  sheetScroll: { paddingHorizontal: 28, paddingTop: 12, flexGrow: 1 },
 
-  /* Fields */
-  fieldGroup:       { marginBottom: Spacing.md },
-  fieldLabel:       { ...Typography.labelMd, color: Colors.textSecondary, marginBottom: 8, marginLeft: 2 },
-  inputWrap:        {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderRadius: Radius.lg,
-    borderWidth: 1.5, borderColor: Colors.surfaceVariant,
-    paddingHorizontal: Spacing.md, height: 54,
+  /* Handle */
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    alignSelf: 'center', marginBottom: 24,
   },
-  inputWrapFocused: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight + '55' },
-  inputIcon:        { marginRight: 10 },
-  input:            { flex: 1, ...Typography.bodyLg, color: Colors.text, height: '100%' },
-  eyeBtn:           { padding: 2 },
+
+  /* Welcome text */
+  welcomeTitle: { fontSize: 28, fontWeight: '700', color: '#111', letterSpacing: -0.5, marginBottom: 5 },
+  welcomeSub:   { fontSize: 15, fontWeight: '400', color: 'rgba(0,0,0,0.5)', marginBottom: 26 },
+
+  /* Field label */
+  fieldLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(0,0,0,0.7)', marginBottom: 8 },
+  fieldIcon:  { marginRight: 10 },
+  input:      { flex: 1, fontSize: 15, fontWeight: '400', color: '#111', height: '100%' },
+  eyeBtn:     { padding: 2 },
 
   /* Error */
-  errorRow:  {
+  errorRow: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginBottom: Spacing.md, marginTop: -4,
-    backgroundColor: '#FEE2E2',
+    marginBottom: 16, marginTop: -4,
+    backgroundColor: 'rgba(239,68,68,0.12)',
     paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: Radius.md, borderWidth: 1, borderColor: '#FECACA',
+    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)',
   },
-  errorText: { color: Colors.error, fontSize: 13, flex: 1 },
+  errorText: { color: colors.error, fontSize: 13, flex: 1 },
 
-  /* FAB */
-  fabBtn:         {
-    marginTop: Spacing.sm, borderRadius: Radius.xxl, overflow: 'hidden',
-    ...Shadows.primary,
-  },
-  fabBtnDisabled: { shadowOpacity: 0.12, elevation: 4 },
-  fabGrad:        {
-    height: 60, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', paddingHorizontal: Spacing.lg, gap: 12,
-  },
-  fabText:    { color: '#FFFFFF', ...Typography.headingSm, letterSpacing: 0.2 },
-  fabIconWrap: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    justifyContent: 'center', alignItems: 'center',
-  },
+  /* Sign in row */
+  signinRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 },
 
   /* Footer */
-  footer:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: Spacing.lg },
-  footerText: { ...Typography.labelMd, color: Colors.textMuted },
+  footerSpacer: { flex: 1, minHeight: 16 },
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingTop: 16,
+  },
+  footerText: { fontSize: 12, fontWeight: '500', color: 'rgba(0,0,0,0.45)' },
 });

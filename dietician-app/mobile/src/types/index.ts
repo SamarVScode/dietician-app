@@ -56,12 +56,42 @@ export interface DayPlan {
   meals: Meal[];
 }
 
+export interface WaterSlot {
+  time: string;      // "HH:MM"
+  amountMl: number;
+}
+
 export interface DietPlan {
   id: string;
   templateId: string | null;
   templateName: string;
   days: DayPlan[];
+  wakeUpTime?: string;
+  sleepTime?: string;
+  waterIntakeMl?: number;
+  waterSchedule?: WaterSlot[];
+  tips?: string;
   assignedAt: string;
   assignedBy: string;
   status: string;
+}
+
+export interface MealLog {
+  planId: string;
+  date: string;          // "YYYY-MM-DD"
+  dayIndex: number;
+  mealId: string;
+  mealName: string;
+  scheduledTime: string; // "HH:MM"
+  completed: boolean;
+  completedAt: string | null;
+}
+
+export interface WaterLog {
+  planId: string;
+  date: string;          // "YYYY-MM-DD"
+  scheduledTime: string; // "HH:MM"
+  amountMl: number;
+  completed: boolean;
+  completedAt: string | null;
 }

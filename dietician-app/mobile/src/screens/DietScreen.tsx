@@ -6,12 +6,11 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-} from 'react-native';
-import {
   Text,
   ActivityIndicator,
-  Divider,
-} from 'react-native-paper';
+  Animated as RNAnimated,
+} from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -23,12 +22,21 @@ import {
   getTotalMacros,
   formatTime12h,
 } from '../services/dietPlanService';
+import { fireTestNotifications } from '../services/notificationService';
+import { fetchTodayMealLogs } from '../services/reportService';
 import type { DietPlan, DayPlan, Meal, FoodItem } from '../types';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme/theme';
-import { Card } from '../components/Card';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionLabel } from '../components/SectionLabel';
-import { MacroPill } from '../components/MacroPill';
+import { colors } from '../theme/colors';
+import { spacing, radius } from '../theme/spacing';
+import { typography } from '../theme/typography';
+import { AppBackground } from '../components/AppBackground';
+import { FrostedCard } from '../components/FrostedCard';
+import { SectionTitle } from '../components/SectionTitle';
+import { NutStat } from '../components/NutStat';
+import { FoodRow } from '../components/FoodRow';
+import { MacroTagColumn } from '../components/MacroTag';
+import { DayPill } from '../components/DayPill';
+import { AnimatedCard } from '../components/AnimatedCard';
+import { PressableScale } from '../components/PressableScale';
 
 type FilterMode = 'today' | 'tomorrow' | 'day' | 'date';
 
@@ -40,121 +48,106 @@ function addDays(d: Date, n: number): Date { const c = new Date(d); c.setDate(c.
 function isSameDay(a: Date, b: Date) { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 function buildDateStrip(): Date[] { const today = startOfDay(new Date()); return Array.from({ length: 29 }, (_,i) => addDays(today, i-7)); }
 
-/* ─── Macro tiles row ────────────────────────────────── */
-function MacroRow({ calories, protein, carbs, fats }: { calories: number; protein: number; carbs: number; fats: number }) {
-  const items = [
-    { label: 'Calories', value: Math.round(calories), unit: 'kcal', color: Colors.caloriesColor, icon: 'fire' },
-    { label: 'Protein',  value: Math.round(protein),  unit: 'g',    color: Colors.proteinColor,  icon: 'arm-flex' },
-    { label: 'Carbs',    value: Math.round(carbs),    unit: 'g',    color: Colors.carbsColor,    icon: 'bread-slice' },
-    { label: 'Fats',     value: Math.round(fats),     unit: 'g',    color: Colors.fatsColor,     icon: 'water' },
-  ];
+/* ─── Nutrition stat row ──────────────────────────────── */
+function NutStatRow({ calories, protein, carbs, fats }: { calories: number; protein: number; carbs: number; fats: number }) {
   return (
-    <View style={styles.macroRow}>
-      {items.map(({ label, value, unit, color, icon }) => (
-        <Card key={label} shadow="sm" style={styles.macroTile} padding={12}>
-          <View style={[styles.macroIconWrap, { backgroundColor: color + '18' }]}>
-            <MaterialCommunityIcons name={icon as never} size={18} color={color} />
-          </View>
-          <Text style={[styles.macroValue, { color }]}>{value}</Text>
-          <Text style={styles.macroUnit}>{unit}</Text>
-          <Text style={styles.macroLabel}>{label}</Text>
-        </Card>
-      ))}
+    <View style={styles.nutRow}>
+      <NutStat val={String(Math.round(calories))} unit="kcal" label="Calories" accent={colors.accentBlue} />
+      <NutStat val={String(Math.round(protein))} unit="g" label="Protein" accent={colors.accentGreen} />
+      <NutStat val={String(Math.round(carbs))} unit="g" label="Carbs" accent={colors.accentYellow} />
+      <NutStat val={String(Math.round(fats))} unit="g" label="Fats" accent={colors.accentPink} />
     </View>
   );
 }
 
 /* ─── Meal card ──────────────────────────────────────── */
-const ACCENT_COLORS = [Colors.primary, Colors.proteinColor, Colors.carbsColor, Colors.fatsColor, Colors.caloriesColor];
-
-function MealCard({ meal, index }: { meal: Meal; index: number }) {
-  const accent = ACCENT_COLORS[index % ACCENT_COLORS.length];
+function MealCard({ meal, completed }: { meal: Meal; completed?: boolean }) {
   return (
-    <Card shadow="sm" style={styles.mealCard} padding={0}>
-      <View style={styles.mealInner}>
-        {/* Left accent bar */}
-        <View style={[styles.mealAccent, { backgroundColor: accent }]} />
-
-        <View style={styles.mealBody}>
-          {/* Header */}
-          <View style={styles.mealHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.mealName}>{meal.name}</Text>
-              {!!meal.time && (
-                <View style={styles.mealTimeRow}>
-                  <MaterialCommunityIcons name="clock-outline" size={12} color={Colors.textMuted} />
-                  <Text style={styles.mealTime}>{formatTime12h(meal.time)}</Text>
-                </View>
-              )}
-            </View>
-            <View style={[styles.calBadge, { backgroundColor: accent + '18', borderColor: accent + '44' }]}>
-              <Text style={[styles.calBadgeText, { color: accent }]}>🔥 {Math.round(meal.calories)} kcal</Text>
-            </View>
-          </View>
-
-          {/* Macro pills */}
-          <View style={styles.pillRow}>
-            <MacroPill label="P" value={meal.protein} color={Colors.proteinColor} />
-            <MacroPill label="C" value={meal.carbs}   color={Colors.carbsColor} />
-            <MacroPill label="F" value={meal.fats}    color={Colors.fatsColor} />
-          </View>
-
-          {/* Food items */}
-          {meal.items.length > 0 && (
-            <>
-              <Divider style={styles.mealDivider} />
-              <View style={styles.foodList}>
-                {meal.items.map((item: FoodItem, idx: number) => (
-                  <View key={idx} style={styles.foodRow}>
-                    <View style={[styles.foodDot, { backgroundColor: accent + 'AA' }]} />
-                    <Text style={styles.foodName} numberOfLines={2}>{item.name}</Text>
-                    {item.calories != null && (
-                      <Text style={styles.foodCal}>{item.calories} kcal</Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
-
-          {!!meal.notes && (
-            <View style={styles.notesBg}>
-              <Text style={styles.notesText}>📝 {meal.notes}</Text>
+    <FrostedCard style={styles.mealCard}>
+      {/* Header */}
+      <View style={styles.mealHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.mealName}>{meal.name}</Text>
+          {!!meal.time && (
+            <View style={styles.mealTimeRow}>
+              <MaterialCommunityIcons name="clock-outline" size={12} color={colors.mutedText} />
+              <Text style={styles.mealTime}>{formatTime12h(meal.time)}</Text>
             </View>
           )}
         </View>
+        <View style={styles.mealBadgeRow}>
+          {completed && (
+            <View style={styles.doneBadge}>
+              <MaterialCommunityIcons name="check-circle" size={12} color={colors.accentGreen} />
+              <Text style={styles.doneBadgeText}>Done</Text>
+            </View>
+          )}
+          <View style={styles.kcalChip}>
+            <Text style={styles.kcalText}>{Math.round(meal.calories)} kcal</Text>
+          </View>
+        </View>
       </View>
-    </Card>
+
+      {/* Body: food rows + macro tags */}
+      <View style={styles.mealBody}>
+        <View style={styles.foodCol}>
+          {meal.items.map((item: FoodItem, idx: number) => (
+            <FoodRow key={idx} name={item.name} kcal={item.calories} />
+          ))}
+        </View>
+        {(meal.protein > 0 || meal.carbs > 0 || meal.fats > 0) && (
+          <MacroTagColumn protein={meal.protein} carbs={meal.carbs} fats={meal.fats} />
+        )}
+      </View>
+
+      {!!meal.notes && <Text style={styles.notesText}>{meal.notes}</Text>}
+    </FrostedCard>
   );
 }
 
-/* ─── Filter pill ────────────────────────────────────── */
+/* ─── Filter pill with BlurView + press feedback ────── */
 function FilterPill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const scale = React.useRef(new RNAnimated.Value(1)).current;
+  const pressIn = () => { RNAnimated.spring(scale, { toValue: 0.93, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+  const pressOut = () => { RNAnimated.spring(scale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.75}
-      style={[styles.filterPill, active && styles.filterPillActive]}
-    >
-      <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
+    <TouchableOpacity onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1}>
+      <RNAnimated.View style={{ transform: [{ scale }] }}>
+        <View style={[styles.filterPillClip, active && styles.filterPillClipActive]}>
+          <BlurView intensity={active ? 80 : 60} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={[styles.filterPillOverlay, active && styles.filterPillOverlayActive]} />
+          <View style={styles.filterPillInner}>
+            <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
+          </View>
+        </View>
+      </RNAnimated.View>
     </TouchableOpacity>
   );
 }
 
-/* ─── Date strip item ────────────────────────────────── */
+/* ─── Date strip item with BlurView + press feedback ── */
 function DateItem({ date, selected, onPress }: { date: Date; selected: boolean; onPress: () => void }) {
   const isToday = isSameDay(date, startOfDay(new Date()));
+  const scale = React.useRef(new RNAnimated.Value(1)).current;
+  const pressIn = () => { RNAnimated.spring(scale, { toValue: 0.9, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+  const pressOut = () => { RNAnimated.spring(scale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+
   return (
-    <TouchableOpacity style={styles.dateItem} onPress={onPress} activeOpacity={0.75}>
-      <Text style={[styles.dateWeekDay, selected && styles.dateActive]}>
-        {isToday ? 'Today' : DAY_NAMES[date.getDay()]}
-      </Text>
-      <View style={[styles.dateBubble, selected && styles.dateBubbleActive]}>
-        <Text style={[styles.dateNum, selected && styles.dateNumActive]}>{date.getDate()}</Text>
-      </View>
-      <Text style={[styles.dateMon, selected && styles.dateActive]}>
-        {MONTH_NAMES[date.getMonth()].slice(0, 3)}
-      </Text>
+    <TouchableOpacity style={styles.dateItem} onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1}>
+      <RNAnimated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
+        <Text style={[styles.dateWeekDay, selected && styles.dateActive]}>
+          {isToday ? 'Today' : DAY_NAMES[date.getDay()]}
+        </Text>
+        <View style={[styles.dateBubbleClip, selected && styles.dateBubbleClipActive]}>
+          <BlurView intensity={selected ? 80 : 60} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={[styles.dateBubbleOverlay, selected && styles.dateBubbleOverlayActive]} />
+          <Text style={[styles.dateNum, selected && styles.dateNumActive]}>{date.getDate()}</Text>
+        </View>
+        <Text style={[styles.dateMon, selected && styles.dateActive]}>
+          {MONTH_NAMES[date.getMonth()].slice(0, 3)}
+        </Text>
+      </RNAnimated.View>
     </TouchableOpacity>
   );
 }
@@ -162,13 +155,15 @@ function DateItem({ date, selected, onPress }: { date: Date; selected: boolean; 
 /* ─── Empty ──────────────────────────────────────────── */
 function EmptyPlan() {
   return (
-    <Card shadow="sm" style={styles.emptyCard}>
+    <FrostedCard style={styles.emptyCard}>
       <View style={styles.emptyIconWrap}>
-        <MaterialCommunityIcons name="food-off-outline" size={40} color={Colors.primary} />
+        <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={styles.emptyIconOverlay} />
+        <MaterialCommunityIcons name="food-off-outline" size={40} color={colors.white} />
       </View>
       <Text style={styles.emptyTitle}>No Diet Plan Yet</Text>
       <Text style={styles.emptySub}>Your dietician hasn't assigned a plan yet.{'\n'}Check back soon!</Text>
-    </Card>
+    </FrostedCard>
   );
 }
 
@@ -181,8 +176,10 @@ export default function DietScreen() {
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [filterMode, setFilterMode]   = useState<FilterMode>('today');
+  const [testingNotifs, setTestingNotifs] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
   const [selectedDate, setSelectedDate]     = useState<Date>(startOfDay(new Date()));
+  const [completedMealIds, setCompletedMealIds] = useState<Set<string>>(new Set());
 
   const dateStrip    = buildDateStrip();
   const dateStripRef = useRef<FlatList>(null);
@@ -190,9 +187,14 @@ export default function DietScreen() {
   const loadPlan = useCallback(async () => {
     if (!userProfile?.id) { setLoading(false); return; }
     try {
-      const active = await fetchActiveDietPlan(userProfile.id);
+      const [active, mealLogs] = await Promise.all([
+        fetchActiveDietPlan(userProfile.id),
+        fetchTodayMealLogs(userProfile.id),
+      ]);
       if (active) { setPlan(active); setSelectedDayIdx(getTodayDayIndex(active)); }
       else         { setPlan(null); }
+      const ids = new Set(mealLogs.filter(l => l.completed).map(l => l.mealId));
+      setCompletedMealIds(ids);
     } catch (e) { console.error('Failed to load diet plan:', e); }
     finally      { setLoading(false); }
   }, [userProfile?.id]);
@@ -229,53 +231,90 @@ export default function DietScreen() {
 
   const isMultiDay = plan && plan.days.length > 1;
 
+  /* Header fade-in */
+  const headerOpacity = useRef(new RNAnimated.Value(0)).current;
+  useEffect(() => {
+    RNAnimated.timing(headerOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader
-        title="Diet Plan"
-        subtitle={plan ? `${plan.templateName}  ·  ${plan.days.length} day${plan.days.length !== 1 ? 's' : ''}` : undefined}
-        right={
-          plan && activeDayPlan ? (
-            <View style={styles.badge}>
-              <MaterialCommunityIcons name="calendar-today" size={11} color={Colors.primary} />
-              <Text style={styles.badgeText}>{filterLabel}</Text>
+    <AppBackground>
+      <RNAnimated.View style={[styles.headerArea, { paddingTop: insets.top + 12, opacity: headerOpacity }]}>
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pageTitle}>Diet Plan</Text>
+            {plan && <Text style={styles.pageSub}>{plan.templateName} {'\u00B7'} {plan.days.length} day{plan.days.length !== 1 ? 's' : ''}</Text>}
+          </View>
+          {plan && activeDayPlan && (
+            <View style={styles.badgeClip}>
+              <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+              <View style={styles.badgeOverlay} />
+              <View style={styles.badgeInner}>
+                <Text style={styles.badgeText}>{filterLabel}</Text>
+              </View>
             </View>
-          ) : undefined
-        }
-      />
+          )}
+        </View>
+      </RNAnimated.View>
 
       <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.white} colors={[colors.white]} />}
       >
         {loading ? (
-          <ActivityIndicator style={styles.loader} color={Colors.primary} size="large" />
+          <ActivityIndicator style={styles.loader} color={colors.white} size="large" />
         ) : !plan ? (
           <EmptyPlan />
         ) : (
           <>
             {/* Filter pills */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
-              <FilterPill label="📅 Today"    active={filterMode === 'today'}    onPress={() => setFilterMode('today')} />
-              <FilterPill label="⏭ Tomorrow" active={filterMode === 'tomorrow'} onPress={() => setFilterMode('tomorrow')} />
-              {isMultiDay && <FilterPill label="📋 By Day" active={filterMode === 'day'} onPress={() => setFilterMode('day')} />}
-              <FilterPill label="🗓 Pick Date" active={filterMode === 'date'}   onPress={() => setFilterMode('date')} />
+              <FilterPill label="Today"    active={filterMode === 'today'}    onPress={() => setFilterMode('today')} />
+              <FilterPill label="Tomorrow" active={filterMode === 'tomorrow'} onPress={() => setFilterMode('tomorrow')} />
+              {isMultiDay && <FilterPill label="By Day" active={filterMode === 'day'} onPress={() => setFilterMode('day')} />}
+              <FilterPill label="Pick Date" active={filterMode === 'date'}   onPress={() => setFilterMode('date')} />
             </ScrollView>
+
+            {/* DEV: Notification test panel */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              disabled={testingNotifs}
+              onPress={async () => {
+                setTestingNotifs(true);
+                try { await fireTestNotifications(plan, userProfile!.id); } catch (e) { console.error(e); }
+                finally { setTestingNotifs(false); }
+              }}
+            >
+              <View style={styles.testNotifClip}>
+                <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+                <View style={styles.testNotifOverlay} />
+                <View style={styles.testNotifInner}>
+                  <MaterialCommunityIcons name="bell-ring-outline" size={16} color={colors.gold} />
+                  <Text style={styles.testNotifText}>
+                    {testingNotifs
+                      ? 'Firing notifications\u2026'
+                      : `[DEV] Fire all notifications (${(plan.waterSchedule?.length ?? 0) + (plan.wakeUpTime ? 1 : 0) + (plan.sleepTime ? 1 : 0) + Math.min(3, getDayPlanForDate(plan, new Date()).meals.length)} total)`}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
 
             {/* Day selector strip */}
             {filterMode === 'day' && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subScroll} contentContainerStyle={styles.subScrollContent}>
                 {plan.days.map((d, idx) => (
-                  <TouchableOpacity
+                  <DayPill
                     key={idx}
-                    style={[styles.dayChip, selectedDayIdx === idx && styles.dayChipActive]}
+                    day={d.dayName}
+                    active={selectedDayIdx === idx}
                     onPress={() => setSelectedDayIdx(idx)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.dayChipText, selectedDayIdx === idx && styles.dayChipTextActive]}>{d.dayName}</Text>
-                  </TouchableOpacity>
+                  />
                 ))}
               </ScrollView>
             )}
@@ -300,108 +339,112 @@ export default function DietScreen() {
             {/* Macro tiles + meals */}
             {activeDayPlan && (
               <>
-                <SectionLabel title="Nutrition Summary" />
-                {macros && <MacroRow calories={macros.calories} protein={macros.protein} carbs={macros.carbs} fats={macros.fats} />}
+                <AnimatedCard delay={60}>
+                  <SectionTitle title="Nutrition Summary" />
+                  {macros && <NutStatRow calories={macros.calories} protein={macros.protein} carbs={macros.carbs} fats={macros.fats} />}
+                </AnimatedCard>
 
-                <View style={{ height: Spacing.md }} />
-                <SectionLabel
-                  title="Meals"
-                  right={
-                    <View style={styles.mealCountBadge}>
-                      <Text style={styles.mealCountText}>{activeDayPlan.meals.length}</Text>
-                    </View>
-                  }
-                />
+                <AnimatedCard delay={130}>
+                  <View style={{ height: 16 }} />
+                  <SectionTitle title={`Meals (${activeDayPlan.meals.length})`} />
+                </AnimatedCard>
 
                 {activeDayPlan.meals.length === 0 ? (
-                  <Card shadow="sm" style={styles.noMeals}><Text style={styles.noMealsText}>No meals planned for this day.</Text></Card>
+                  <FrostedCard><Text style={styles.noMealsText}>No meals planned for this day.</Text></FrostedCard>
                 ) : (
-                  activeDayPlan.meals.map((meal, idx) => <MealCard key={meal.id} meal={meal} index={idx} />)
+                  activeDayPlan.meals.map((meal, idx) => (
+                    <AnimatedCard key={meal.id} delay={Math.min(200 + idx * 70, 480)}>
+                      <PressableScale>
+                        <MealCard
+                          meal={meal}
+                          completed={filterMode === 'today' ? completedMealIds.has(meal.id) : undefined}
+                        />
+                      </PressableScale>
+                    </AnimatedCard>
+                  ))
                 )}
               </>
             )}
           </>
         )}
-        <View style={{ height: 32 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </View>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  body:      { flex: 1 },
-  bodyContent: { paddingTop: Spacing.sm, paddingHorizontal: Spacing.md, paddingBottom: 110 },
-  loader:    { marginTop: 60 },
+  scroll:        { flex: 1 },
+  scrollContent: { paddingHorizontal: spacing.screenPadding, paddingBottom: 110 },
+  loader:        { marginTop: 60 },
 
-  badge:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full },
-  badgeText: { ...Typography.labelMd, color: Colors.primary },
+  /* Header area */
+  headerArea: { paddingHorizontal: spacing.screenPadding, paddingBottom: 8 },
+  titleRow:   { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  pageTitle:  { ...typography.sectionTitle, color: colors.white, fontSize: 24, fontWeight: '900' },
+  pageSub:    { ...typography.subLabelSm, color: colors.mutedText, marginTop: 2 },
+  badgeClip:    { borderRadius: radius.activePill, overflow: 'hidden', borderWidth: 1, borderColor: colors.activePillBorder },
+  badgeOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.activePillBg },
+  badgeInner:   { paddingHorizontal: 12, paddingVertical: 5 },
+  badgeText:    { fontSize: 12, fontWeight: '700', color: colors.blackText },
+
+  /* Nut stat row */
+  nutRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
 
   /* Filter pills */
-  filterScroll:         { marginBottom: Spacing.xs },
-  filterContent:        { gap: Spacing.sm, paddingVertical: Spacing.xs },
-  filterPill:           { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full, backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.surfaceVariant, ...Shadows.sm },
-  filterPillActive:     { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  filterPillText:       { ...Typography.labelMd, color: Colors.textSecondary },
-  filterPillTextActive: { color: '#FFFFFF', fontWeight: '700' },
+  filterScroll:              { marginBottom: 8 },
+  filterContent:             { gap: 8, paddingVertical: 4 },
+  filterPillClip:            { borderRadius: 50, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  filterPillClipActive:      { borderColor: colors.activePillBorder },
+  filterPillOverlay:         { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
+  filterPillOverlayActive:   { backgroundColor: 'rgba(255,255,255,0.15)' },
+  filterPillInner:           { paddingHorizontal: 16, paddingVertical: 9 },
+  filterPillText:            { fontSize: 13, fontWeight: '700', color: colors.white },
+  filterPillTextActive:      { color: colors.blackText },
 
   /* Day chips / date strip */
-  subScroll:        { marginBottom: Spacing.sm, marginTop: Spacing.xs },
-  subScrollContent: { gap: Spacing.sm, paddingVertical: Spacing.xs },
-  dayChip:          { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full, backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.surfaceVariant },
-  dayChipActive:    { backgroundColor: Colors.primaryLight, borderColor: Colors.primary },
-  dayChipText:      { ...Typography.labelMd, color: Colors.textSecondary },
-  dayChipTextActive:{ color: Colors.primaryDark, fontWeight: '700' },
+  subScroll:        { marginBottom: 12, marginTop: 4 },
+  subScrollContent: { paddingVertical: 4 },
 
   /* Date strip */
-  dateStripContent: { paddingHorizontal: Spacing.xs, gap: 2 },
-  dateItem:         { width: 60, alignItems: 'center', paddingVertical: Spacing.xs },
-  dateWeekDay:      { ...Typography.caption, color: Colors.textMuted, fontWeight: '600', marginBottom: 4 },
-  dateBubble:       { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.surfaceVariant },
-  dateBubbleActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  dateNum:          { ...Typography.headingSm, color: Colors.text },
-  dateNumActive:    { color: '#FFFFFF' },
-  dateMon:          { ...Typography.caption, color: Colors.textMuted, marginTop: 4 },
-  dateActive:       { color: Colors.primary, fontWeight: '700' },
-
-  /* Macro row */
-  macroRow:     { flexDirection: 'row', gap: Spacing.sm, marginBottom: 0 },
-  macroTile:    { flex: 1, alignItems: 'center', borderRadius: Radius.lg },
-  macroIconWrap:{ width: 36, height: 36, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.xs },
-  macroValue:   { ...Typography.headingMd, lineHeight: 22 },
-  macroUnit:    { ...Typography.caption, color: Colors.textMuted },
-  macroLabel:   { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-
-  /* Meal count */
-  mealCountBadge: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  mealCountText:  { color: '#FFFFFF', ...Typography.caption, fontWeight: '800' },
+  dateStripContent: { paddingHorizontal: 4, gap: 2 },
+  dateItem:         { width: 60, alignItems: 'center', paddingVertical: 4 },
+  dateWeekDay:      { fontSize: 10, fontWeight: '600', color: colors.mutedText, marginBottom: 4 },
+  dateBubbleClip:          { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)' },
+  dateBubbleClipActive:    { borderColor: colors.activePillBorder },
+  dateBubbleOverlay:       { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
+  dateBubbleOverlayActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
+  dateNum:          { fontSize: 16, fontWeight: '700', color: colors.white },
+  dateNumActive:    { color: colors.blackText },
+  dateMon:          { fontSize: 10, fontWeight: '500', color: colors.mutedText, marginTop: 4 },
+  dateActive:       { color: colors.white, fontWeight: '700' },
 
   /* Meal card */
-  mealCard:    { marginBottom: 10, overflow: 'hidden' },
-  mealInner:   { flexDirection: 'row' },
-  mealAccent:  { width: 4 },
-  mealBody:    { flex: 1, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
-  mealHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.sm },
-  mealName:    { ...Typography.headingSm, color: Colors.text },
-  mealTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  mealTime:    { ...Typography.bodySm, color: Colors.textMuted },
-  calBadge:    { paddingHorizontal: 9, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
-  calBadgeText:{ fontSize: 11, fontWeight: '700' },
-  pillRow:     { flexDirection: 'row', gap: 6, marginBottom: 4 },
-  mealDivider: { marginVertical: 10, backgroundColor: Colors.surfaceVariant },
-  foodList:    { gap: 5 },
-  foodRow:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  foodDot:     { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
-  foodName:    { flex: 1, ...Typography.bodySm, color: Colors.text },
-  foodCal:     { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-  notesBg:     { marginTop: 10, padding: 10, borderRadius: Radius.md, backgroundColor: Colors.primaryLight + '55' },
-  notesText:   { ...Typography.bodySm, color: Colors.textSecondary, fontStyle: 'italic', lineHeight: 18 },
+  mealCard:     { marginBottom: 10 },
+  mealHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  mealName:     { fontSize: 16, fontWeight: '600', color: colors.white, letterSpacing: -0.2 },
+  mealTimeRow:  { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  mealTime:     { fontSize: 12, fontWeight: '500', color: colors.mutedText },
+  mealBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  doneBadge:    { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.proteinBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 50 },
+  doneBadgeText:{ fontSize: 11, fontWeight: '700', color: colors.proteinText },
+  kcalChip:     { backgroundColor: 'rgba(125,212,248,0.2)', borderRadius: radius.kcalBadge, paddingHorizontal: 10, paddingVertical: 4 },
+  kcalText:     { fontSize: 13, fontWeight: '700', color: colors.mealKcal },
+  mealBody:     { flexDirection: 'row', gap: 12 },
+  foodCol:      { flex: 1 },
+  notesText:    { fontSize: 13, fontWeight: '400', color: colors.mutedText, fontStyle: 'italic', marginTop: 10 },
+
+  /* DEV: test notification button */
+  testNotifClip:    { borderRadius: radius.card, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', marginBottom: 12 },
+  testNotifOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
+  testNotifInner:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  testNotifText:    { flex: 1, fontSize: 12, fontWeight: '700', color: colors.mutedText },
 
   /* Empty */
-  emptyCard:    { alignItems: 'center', paddingVertical: 44, marginTop: Spacing.lg },
-  emptyIconWrap:{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.md },
-  emptyTitle:   { ...Typography.headingLg, color: Colors.text, marginBottom: Spacing.sm },
-  emptySub:     { ...Typography.bodyMd, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  noMeals:      { alignItems: 'center' },
-  noMealsText:  { color: Colors.textSecondary },
+  emptyCard:    { alignItems: 'center', marginTop: 24 },
+  emptyIconWrap:    { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
+  emptyIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
+  emptyTitle:   { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 8 },
+  emptySub:     { fontSize: 14, fontWeight: '400', color: colors.mutedText, textAlign: 'center', lineHeight: 22 },
+  noMealsText:  { color: colors.mutedText, textAlign: 'center' },
 });

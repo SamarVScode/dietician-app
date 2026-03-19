@@ -1,48 +1,44 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
-import { Text, Divider } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Text, Animated } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAuthStore } from '../store/authStore';
 import { signOut } from '../services/authService';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme/theme';
-import { Card } from '../components/Card';
-import { SectionLabel } from '../components/SectionLabel';
+import { fetchActiveDietPlan, formatTime12h } from '../services/dietPlanService';
+import type { DietPlan } from '../types';
+import { colors } from '../theme/colors';
+import { spacing, radius } from '../theme/spacing';
+import { typography } from '../theme/typography';
+import { AppBackground } from '../components/AppBackground';
+import { FrostedCard } from '../components/FrostedCard';
+import { SectionTitle } from '../components/SectionTitle';
+import { InfoRow } from '../components/InfoRow';
+import { StatCol } from '../components/StatCol';
+import { GradientButton } from '../components/GradientButton';
+import { AnimatedCard } from '../components/AnimatedCard';
+import { PressableScale } from '../components/PressableScale';
 
 function getInitials(name: string): string {
   return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) ?? '?';
 }
 
-function bmiColor(category: string): string {
+function bmiAccent(category: string): string {
   switch (category?.toLowerCase()) {
-    case 'underweight': return Colors.info;
-    case 'normal':      return Colors.success;
-    case 'overweight':  return Colors.warning;
-    case 'obese':       return Colors.error;
-    default:            return Colors.primary;
+    case 'underweight': return colors.accentBlue;
+    case 'normal':      return colors.accentGreen;
+    case 'overweight':  return colors.accentYellow;
+    case 'obese':       return colors.accentPink;
+    default:            return colors.accentBlue;
   }
 }
 
-/* ─── Info row ───────────────────────────────────────── */
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIconWrap}>
-        <MaterialCommunityIcons name={icon as never} size={15} color={Colors.primary} />
-      </View>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
 /* ─── Tag ────────────────────────────────────────────── */
-function Tag({ label, bg, color }: { label: string; bg: string; color: string }) {
+function Tag({ label, bg, textColor }: { label: string; bg: string; textColor: string }) {
   return (
     <View style={[styles.tag, { backgroundColor: bg }]}>
-      <Text style={[styles.tagText, { color }]}>{label}</Text>
+      <Text style={[styles.tagText, { color: textColor }]}>{label}</Text>
     </View>
   );
 }
@@ -52,6 +48,12 @@ export default function ProfileScreen() {
   const { userProfile, reset } = useAuthStore();
   const insets = useSafeAreaInsets();
   const [signingOut, setSigningOut] = useState(false);
+  const [activePlan, setActivePlan] = useState<DietPlan | null>(null);
+
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    fetchActiveDietPlan(userProfile.id).then(setActivePlan).catch(() => {});
+  }, [userProfile?.id]);
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -70,215 +72,213 @@ export default function ProfileScreen() {
   };
 
   if (!userProfile) {
-    return <View style={styles.centered}><Text style={{ color: Colors.textSecondary }}>Loading profile…</Text></View>;
+    return (
+      <AppBackground>
+        <View style={styles.centered}>
+          <Text style={{ color: colors.mutedText }}>Loading profile\u2026</Text>
+        </View>
+      </AppBackground>
+    );
   }
 
-  const bmc = bmiColor(userProfile.bmiCategory);
+  const bmc = bmiAccent(userProfile.bmiCategory);
   const hasBodyComp = userProfile.bodyFatPercent != null || userProfile.muscleMass != null || userProfile.boneMass != null || userProfile.bmr != null;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Page header */}
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Profile</Text>
-      </View>
+    <AppBackground>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Page title */}
+        <AnimatedCard delay={0}>
+          <Text style={styles.pageTitle}>Profile</Text>
+        </AnimatedCard>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-        {/* ── Identity card ── */}
-        <Card shadow="md" style={styles.identityCard} padding={0}>
-          <LinearGradient
-            colors={[Colors.primary, Colors.primaryMid]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.identityGrad}
-          >
-            {/* Avatar circle */}
+        {/* Identity card */}
+        <AnimatedCard delay={60}>
+        <PressableScale>
+        <FrostedCard style={styles.identityCard}>
+          <View style={styles.identityInner}>
             <View style={styles.avatarCircle}>
+              <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+              <View style={styles.avatarOverlay} />
               <Text style={styles.avatarText}>{getInitials(userProfile.name)}</Text>
+              <View style={styles.onlineDot} />
             </View>
             <Text style={styles.profileName}>{userProfile.name}</Text>
             <Text style={styles.profileUserId}>@{userProfile.userId}</Text>
-          </LinearGradient>
-
-          {/* Status pill */}
-          <View style={[
-            styles.statusPill,
-            { backgroundColor: userProfile.status === 'active' ? '#ECFDF5' : '#FFFBEB' },
-          ]}>
-            <View style={[
-              styles.statusDot,
-              { backgroundColor: userProfile.status === 'active' ? Colors.success : Colors.warning },
-            ]} />
-            <Text style={[
-              styles.statusText,
-              { color: userProfile.status === 'active' ? '#065F46' : '#92400E' },
-            ]}>
-              {userProfile.status === 'active' ? 'Active Plan' : 'No Plan Assigned'}
-            </Text>
+            <View style={styles.statusPill}>
+              <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+              <View style={styles.statusOverlay} />
+              <View style={[styles.statusDot, { backgroundColor: userProfile.status === 'active' ? colors.accentGreen : colors.accentYellow }]} />
+              <Text style={styles.statusText}>
+                {userProfile.status === 'active' ? 'Active Plan' : 'No Plan Assigned'}
+              </Text>
+            </View>
           </View>
-        </Card>
+        </FrostedCard>
+        </PressableScale>
+        </AnimatedCard>
 
-        {/* ── Body stats ── */}
-        <SectionLabel title="Body Stats" />
-        <Card shadow="sm" style={styles.statsCard} padding={0}>
-          {[
-            { label: 'Weight',    value: `${userProfile.weight}`, sub: 'kg',  color: Colors.primary },
-            { label: 'Height',    value: `${userProfile.height}`, sub: 'cm',  color: Colors.info },
-            { label: 'BMI',       value: userProfile.bmi.toFixed(1), sub: userProfile.bmiCategory, color: bmc },
-            { label: 'Body Type', value: userProfile.bodyType, sub: undefined, color: Colors.primary },
-          ].map(({ label, value, sub, color }, idx, arr) => (
-            <React.Fragment key={label}>
-              <View style={styles.statPill}>
-                <Text style={[styles.statValue, { color }]}>{value}</Text>
-                {!!sub && <Text style={[styles.statSub, { color, opacity: 0.7 }]}>{sub}</Text>}
-                <Text style={styles.statLabel}>{label}</Text>
-              </View>
-              {idx < arr.length - 1 && <View style={styles.statDivider} />}
-            </React.Fragment>
-          ))}
-        </Card>
+        {/* Body stats */}
+        <AnimatedCard delay={130}>
+        <SectionTitle title="Body Stats" />
+        <FrostedCard>
+          <View style={styles.statsRow}>
+            <StatCol accent={colors.accentBlue} val={`${userProfile.weight}`} unit="kg" label="Weight" />
+            <View style={styles.statDivider} />
+            <StatCol accent={colors.accentGreen} val={`${userProfile.height}`} unit="cm" label="Height" />
+            <View style={styles.statDivider} />
+            <StatCol accent={bmc} val={userProfile.bmi.toFixed(1)} unit={userProfile.bmiCategory} label="BMI" />
+            <View style={styles.statDivider} />
+            <StatCol accent={colors.accentBlue} val={userProfile.bodyType} unit="" label="Body Type" />
+          </View>
+        </FrostedCard>
+        </AnimatedCard>
 
-        {/* ── Personal ── */}
-        <SectionLabel title="Personal" />
-        <Card shadow="sm" style={styles.card} padding={0}>
+        {/* Personal */}
+        <AnimatedCard delay={200}>
+        <View style={styles.sectionGap} />
+        <SectionTitle title="Personal" />
+        <FrostedCard>
           <InfoRow icon="cake-variant-outline" label="Age" value={`${userProfile.age} yrs`} />
-          <Divider style={styles.divider} />
           <InfoRow icon="gender-male-female" label="Gender" value={userProfile.gender} />
-          {!!userProfile.phone && <>
-            <Divider style={styles.divider} />
-            <InfoRow icon="phone-outline" label="Phone" value={userProfile.phone} />
-          </>}
-        </Card>
+          {!!userProfile.phone && (
+            <InfoRow icon="phone-outline" label="Phone" value={userProfile.phone} showDivider={false} />
+          )}
+        </FrostedCard>
+        </AnimatedCard>
 
-        {/* ── Diet ── */}
-        <SectionLabel title="Diet" />
-        <Card shadow="sm" style={styles.card} padding={0}>
-          <InfoRow icon="bullseye-arrow"         label="Goal"       value={userProfile.goal} />
-          <Divider style={styles.divider} />
-          <InfoRow icon="silverware-fork-knife"  label="Preference" value={userProfile.preference} />
+        {/* Diet */}
+        <AnimatedCard delay={270}>
+        <View style={styles.sectionGap} />
+        <SectionTitle title="Diet" />
+        <FrostedCard>
+          <InfoRow icon="bullseye-arrow" label="Goal" value={userProfile.goal} />
+          <InfoRow icon="silverware-fork-knife" label="Preference" value={userProfile.preference} />
 
           {userProfile.allergies?.length > 0 && (
-            <>
-              <Divider style={styles.divider} />
-              <View style={styles.tagSection}>
-                <Text style={styles.tagSectionLabel}>Allergies</Text>
-                <View style={styles.tagRow}>
-                  {userProfile.allergies.map(a => <Tag key={a} label={a} bg="#FEE2E2" color="#991B1B" />)}
-                </View>
+            <View style={styles.tagSection}>
+              <Text style={styles.tagSectionLabel}>Allergies</Text>
+              <View style={styles.tagRow}>
+                {userProfile.allergies.map(a => <Tag key={a} label={a} bg={colors.fatBg} textColor={colors.fatText} />)}
               </View>
-            </>
+            </View>
           )}
 
           {userProfile.conditions?.length > 0 && (
-            <>
-              <Divider style={styles.divider} />
-              <View style={styles.tagSection}>
-                <Text style={styles.tagSectionLabel}>Conditions</Text>
-                <View style={styles.tagRow}>
-                  {userProfile.conditions.map(c => <Tag key={c} label={c} bg="#DCFCE7" color="#166534" />)}
-                </View>
+            <View style={styles.tagSection}>
+              <Text style={styles.tagSectionLabel}>Conditions</Text>
+              <View style={styles.tagRow}>
+                {userProfile.conditions.map(c => <Tag key={c} label={c} bg={colors.proteinBg} textColor={colors.proteinText} />)}
               </View>
-            </>
+            </View>
           )}
 
           {!!userProfile.medications && (
-            <>
-              <Divider style={styles.divider} />
-              <InfoRow icon="pill" label="Medications" value={userProfile.medications} />
-            </>
+            <InfoRow icon="pill" label="Medications" value={userProfile.medications} showDivider={false} />
           )}
-        </Card>
+        </FrostedCard>
+        </AnimatedCard>
 
-        {/* ── Body composition ── */}
-        {hasBodyComp && (
-          <>
-            <SectionLabel title="Body Composition" />
-            <Card shadow="sm" style={styles.card} padding={0}>
-              {userProfile.bodyFatPercent != null && <>
-                <InfoRow icon="percent"        label="Body Fat"    value={`${userProfile.bodyFatPercent}%`} />
-                <Divider style={styles.divider} />
-              </>}
-              {userProfile.muscleMass != null && <>
-                <InfoRow icon="arm-flex-outline" label="Muscle Mass" value={`${userProfile.muscleMass} kg`} />
-                <Divider style={styles.divider} />
-              </>}
-              {userProfile.boneMass != null && <>
-                <InfoRow icon="bone"           label="Bone Mass"  value={`${userProfile.boneMass} kg`} />
-                <Divider style={styles.divider} />
-              </>}
-              {userProfile.bmr != null && <InfoRow icon="fire-circle" label="BMR" value={`${userProfile.bmr} kcal/day`} />}
-            </Card>
-          </>
+        {/* Wellness */}
+        {activePlan && (activePlan.wakeUpTime || activePlan.sleepTime || activePlan.waterIntakeMl) && (
+          <AnimatedCard delay={340}>
+            <View style={styles.sectionGap} />
+            <SectionTitle title="Wellness" />
+            <FrostedCard>
+              {!!activePlan.wakeUpTime && (
+                <InfoRow icon="weather-sunset-up" label="Wake Up" value={formatTime12h(activePlan.wakeUpTime)} />
+              )}
+              {!!activePlan.sleepTime && (
+                <InfoRow icon="weather-night" label="Bedtime" value={formatTime12h(activePlan.sleepTime)} />
+              )}
+              {!!activePlan.waterIntakeMl && (
+                <InfoRow icon="water-outline" label="Daily Water" value={`${(activePlan.waterIntakeMl / 1000).toFixed(1)} L`} showDivider={false} />
+              )}
+            </FrostedCard>
+          </AnimatedCard>
         )}
 
-        {/* ── Sign out ── */}
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          onPress={handleSignOut}
-          disabled={signingOut}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons name="logout" size={16} color={Colors.error} />
-          <Text style={styles.signOutText}>{signingOut ? 'Signing out…' : 'Sign Out'}</Text>
-        </TouchableOpacity>
+        {/* Body composition */}
+        {hasBodyComp && (
+          <AnimatedCard delay={410}>
+            <View style={styles.sectionGap} />
+            <SectionTitle title="Body Composition" />
+            <FrostedCard>
+              {userProfile.bodyFatPercent != null && (
+                <InfoRow icon="percent" label="Body Fat" value={`${userProfile.bodyFatPercent}%`} />
+              )}
+              {userProfile.muscleMass != null && (
+                <InfoRow icon="arm-flex-outline" label="Muscle Mass" value={`${userProfile.muscleMass} kg`} />
+              )}
+              {userProfile.boneMass != null && (
+                <InfoRow icon="bone" label="Bone Mass" value={`${userProfile.boneMass} kg`} />
+              )}
+              {userProfile.bmr != null && (
+                <InfoRow icon="fire-circle" label="BMR" value={`${userProfile.bmr} kcal/day`} showDivider={false} />
+              )}
+            </FrostedCard>
+          </AnimatedCard>
+        )}
 
-        <View style={{ height: 32 }} />
+        {/* Sign out */}
+        <AnimatedCard delay={480}>
+          <View style={styles.sectionGap} />
+          <GradientButton
+            label={signingOut ? 'Signing out\u2026' : 'Sign Out'}
+            onPress={handleSignOut}
+            align="right"
+            loading={signingOut}
+          />
+        </AnimatedCard>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </View>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centered:  { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
-
-  pageHeader: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: 14, backgroundColor: Colors.background },
-  pageTitle:  { ...Typography.displaySm, color: Colors.text },
-
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scroll:        { flex: 1 },
-  scrollContent: { paddingHorizontal: Spacing.md, paddingTop: Spacing.xs, paddingBottom: 110 },
+  scrollContent: { paddingHorizontal: spacing.screenPadding, paddingBottom: 110 },
+  sectionGap:    { height: spacing.sectionGap },
+
+  pageTitle: { ...typography.sectionTitle, color: colors.white, fontSize: 24, fontWeight: '900', marginBottom: 16 },
 
   /* Identity card */
-  identityCard: { overflow: 'hidden', marginBottom: Spacing.lg },
-  identityGrad: { alignItems: 'center', paddingTop: Spacing.xl, paddingBottom: Spacing.lg, paddingHorizontal: Spacing.lg },
+  identityCard: { marginBottom: spacing.sectionGap },
+  identityInner:{ alignItems: 'center', paddingVertical: 8 },
   avatarCircle: {
     width: 76, height: 76, borderRadius: 38,
-    backgroundColor: 'rgba(255,255,255,0.2)',
     borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.5)',
-    justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.md,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 14,
+    overflow: 'hidden',
   },
-  avatarText:    { ...Typography.displaySm, color: '#FFFFFF' },
-  profileName:   { ...Typography.headingLg, color: '#FFFFFF', marginBottom: 4 },
-  profileUserId: { ...Typography.bodyMd, color: 'rgba(255,255,255,0.65)' },
-  statusPill:    { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.md, paddingVertical: 12 },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  avatarText:    { fontSize: 24, fontWeight: '800', color: colors.white },
+  onlineDot:     { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: colors.onlineDot, borderWidth: 2, borderColor: colors.white },
+  profileName:   { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  profileUserId: { fontSize: 14, fontWeight: '500', color: colors.mutedText },
+  statusPill:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 50, overflow: 'hidden' },
+  statusOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
   statusDot:     { width: 7, height: 7, borderRadius: 4 },
-  statusText:    { ...Typography.labelMd },
+  statusText:    { fontSize: 12, fontWeight: '700', color: colors.white },
 
   /* Body stats */
-  statsCard:   { flexDirection: 'row', marginBottom: Spacing.lg },
-  statPill:    { flex: 1, alignItems: 'center', paddingVertical: Spacing.md },
-  statDivider: { width: 1, backgroundColor: Colors.surfaceVariant, marginVertical: Spacing.sm },
-  statValue:   { ...Typography.headingMd, marginBottom: 2 },
-  statSub:     { ...Typography.caption, fontWeight: '600', marginBottom: 3 },
-  statLabel:   { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-
-  /* Info card */
-  card:     { marginBottom: Spacing.lg, overflow: 'hidden' },
-  divider:  { marginHorizontal: Spacing.md, backgroundColor: Colors.surfaceVariant },
-  infoRow:  { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: Spacing.md, paddingVertical: 13 },
-  infoIconWrap: { width: 28, height: 28, borderRadius: Radius.sm, backgroundColor: Colors.primaryLight, justifyContent: 'center', alignItems: 'center' },
-  infoLabel:{ flex: 1, ...Typography.bodyMd, color: Colors.textSecondary },
-  infoValue:{ ...Typography.bodyMd, color: Colors.text, fontWeight: '700', maxWidth: '55%', textAlign: 'right' },
+  statsRow:    { flexDirection: 'row' },
+  statDivider: { width: 1, backgroundColor: colors.rowDivider, marginVertical: 8 },
 
   /* Tags */
-  tagSection:      { paddingHorizontal: Spacing.md, paddingVertical: 12 },
-  tagSectionLabel: { ...Typography.labelMd, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  tagSection:      { paddingVertical: 10 },
+  tagSectionLabel: { fontSize: 12, fontWeight: '600', color: colors.mutedText, marginBottom: 8 },
   tagRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  tag:             { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full },
-  tagText:         { ...Typography.labelSm },
-
-  /* Sign out */
-  signOutBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: Radius.lg, borderWidth: 1.5, borderColor: Colors.error + '44', marginTop: Spacing.xs, backgroundColor: '#FEF2F2' },
-  signOutText: { ...Typography.labelLg, color: Colors.error },
+  tag:             { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 50 },
+  tagText:         { fontSize: 11, fontWeight: '700' },
 });

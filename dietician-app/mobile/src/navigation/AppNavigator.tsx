@@ -1,25 +1,34 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import {
-  View, ActivityIndicator, TouchableOpacity,
-  StyleSheet, Text, LayoutAnimation, Platform, UIManager,
-  Animated, Easing,
+  View, ActivityIndicator,
+  StyleSheet, Animated, Easing,
+  LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { onAuthStateChanged } from 'firebase/auth';
 
 import { auth } from '../services/firebase';
 import { fetchUserProfile } from '../services/authService';
+import { fetchActiveDietPlan } from '../services/dietPlanService';
+import {
+  setupAndroidChannel,
+  setupNotificationCategories,
+  scheduleAllNotifications,
+  cancelAllNotifications,
+  handleNotificationResponse,
+} from '../services/notificationService';
 import { useAuthStore } from '../store/authStore';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import DietScreen from '../screens/DietScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import { Colors } from '../theme/theme';
+import { NavBar } from '../components/NavBar';
+import { colors } from '../theme/colors';
+import { AppBackground } from '../components/AppBackground';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -31,55 +40,8 @@ export type MainTabParamList  = { Home: undefined; Diet: undefined; Profile: und
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab   = createBottomTabNavigator<MainTabParamList>();
 
-/* ─── Tab meta ───────────────────────────────────────── */
-const TAB_ICON: Record<string, string> = {
-  Home:    'home-variant',
-  Diet:    'food-apple-outline',
-  Profile: 'account-circle-outline',
-};
-const TAB_LABEL: Record<string, string> = {
-  Home:    'Home',
-  Diet:    'Diet',
-  Profile: 'Profile',
-};
-
-/* ─── Fixed-width tab item ───────────────────────────── */
-const ITEM_W = 82;
-
-function TabItem({
-  route, focused, onPress,
-}: {
-  route: { key: string; name: string };
-  focused: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={tab.itemOuter}
-    >
-      {focused && <View style={tab.itemBg} />}
-
-      <MaterialCommunityIcons
-        name={TAB_ICON[route.name] as never}
-        size={22}
-        color={focused ? Colors.primary : Colors.textSecondary}
-      />
-
-      {focused && (
-        <Text style={tab.label} numberOfLines={1}>
-          {TAB_LABEL[route.name]}
-        </Text>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-/* ─── Glass pill tab bar (CSS-only frosted glass) ────── */
-function GlassTabBar({ state, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
-
+/* ─── Custom tab bar using NavBar component ─────────── */
+function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const handlePress = (routeName: string) => {
     LayoutAnimation.configureNext(
       LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
@@ -87,84 +49,17 @@ function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     navigation.navigate(routeName);
   };
 
+  const activeRoute = state.routes[state.index].name;
+
   return (
-    <View
-      style={[tab.wrapper, { paddingBottom: Math.max(insets.bottom, 8) + 12 }]}
-      pointerEvents="box-none"
-    >
-      {/* Shadow wrapper — separate from overflow:hidden clip */}
-      <View style={tab.shadow}>
-        {/* Clip wrapper for border-radius */}
-        <View style={tab.pillClip}>
-          <View style={tab.glass}>
-            {state.routes.map((route, index) => (
-              <TabItem
-                key={route.key}
-                route={route}
-                focused={state.index === index}
-                onPress={() => handlePress(route.name)}
-              />
-            ))}
-          </View>
-        </View>
-      </View>
-    </View>
+    <NavBar
+      activeTab={activeRoute}
+      onTabPress={handlePress}
+    />
   );
 }
 
-/* ─── Tab styles ─────────────────────────────────────── */
-const tab = StyleSheet.create({
-  wrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  shadow: {
-    borderRadius: 40,
-    shadowColor: '#3730A3',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    elevation: 20,
-  },
-  pillClip: {
-    borderRadius: 40,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.92)',
-  },
-  glass: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(237, 233, 254, 0.88)',
-  },
-  itemOuter: {
-    width: ITEM_W,
-    height: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 32,
-    overflow: 'hidden',
-    gap: 5,
-  },
-  itemBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: 32,
-  },
-  label: {
-    color: Colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-});
-
-/* ─── Fade wrapper (timing + useNativeDriver:false — no _tracking risk) ─── */
+/* ─── Fade wrapper ─────────────────────────────────────── */
 function FadeScreen({ children }: { children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -198,7 +93,7 @@ const ProfileWrapped = () => <FadeScreen><ProfileScreen /></FadeScreen>;
 function MainTabs() {
   return (
     <Tab.Navigator
-      tabBar={props => <GlassTabBar {...props} />}
+      tabBar={props => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Home"    component={HomeWrapped} />
@@ -214,29 +109,57 @@ export function AppNavigator() {
     useAuthStore();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    // One-time notification setup
+    setupAndroidChannel();
+    setupNotificationCategories();
+
+    // Handle response when app was killed and user tapped action button
+    Notifications.getLastNotificationResponseAsync().then(r => {
+      if (r) handleNotificationResponse(r);
+    });
+
+    // Handle responses while app is in foreground or background
+    const notifSub = Notifications.addNotificationResponseReceivedListener(
+      handleNotificationResponse,
+    );
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
       if (user?.email) {
         try {
           const profile = await fetchUserProfile(user.email);
           setUserProfile(profile);
+          if (profile?.id) {
+            fetchActiveDietPlan(profile.id)
+              .then(plan => {
+                if (plan) scheduleAllNotifications(plan, profile.id).catch(console.error);
+              })
+              .catch(console.error);
+          }
         } catch (e) {
           console.error('Failed to fetch user profile:', e);
           setUserProfile(null);
         }
       } else {
         setUserProfile(null);
+        cancelAllNotifications().catch(console.error);
       }
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubscribeAuth();
+      notifSub.remove();
+    };
   }, []);
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primaryDark }}>
-        <ActivityIndicator size="large" color={Colors.white} />
-      </View>
+      <AppBackground>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.white} />
+        </View>
+      </AppBackground>
     );
   }
 
@@ -250,3 +173,11 @@ export function AppNavigator() {
     </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
