@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Save, Copy, ChevronDown } from 'lucide-react'
+import { showToast } from '../../utils/toast'
+import { Save, Copy, ChevronDown, Droplets } from 'lucide-react'
 import { MealBuilder } from './MealBuilder'
-import { mealInputStyle, mealLabelStyle, cloneMeals } from './mealUtils'
+import { mealInputStyle, mealLabelStyle, cloneMeals, generateWaterSchedule, formatTime12h } from './mealUtils'
 import type { TemplateFormData, Meal } from './mealUtils'
 
 const GOALS = ['Weight Loss', 'Muscle Gain', 'Maintain Weight', 'General Health']
@@ -23,6 +24,7 @@ export function TemplateForm({
   const [activeSection, setActiveSection] = useState<'info' | 'plan'>('info')
   const [activeDay, setActiveDay] = useState(0)
   const [showCopyFrom, setShowCopyFrom] = useState(false)
+  const [showCopyTo, setShowCopyTo] = useState(false)
 
   const chipStyle = (selected: boolean) => ({
     padding: '7px 14px',
@@ -46,13 +48,23 @@ export function TemplateForm({
     const meals = form.days[activeDay].meals
     setForm((prev) => ({
       ...prev,
-      days: prev.days.map((d) => ({ ...d, meals: cloneMeals(meals) })),
+      days: prev.days.map((d) =>
+        d.dayIndex === activeDay ? d : { ...d, meals: cloneMeals(meals) }
+      ),
     }))
+    showToast.appliedToAll(form.days[activeDay].dayName)
   }
 
   const copyFromDay = (fromDayIndex: number) => {
     updateDayMeals(activeDay, cloneMeals(form.days[fromDayIndex].meals))
     setShowCopyFrom(false)
+    showToast.copiedFrom(form.days[fromDayIndex].dayName)
+  }
+
+  const copyToDay = (toDayIndex: number) => {
+    updateDayMeals(toDayIndex, cloneMeals(form.days[activeDay].meals))
+    setShowCopyTo(false)
+    showToast.copiedTo(form.days[toDayIndex].dayName)
   }
 
   const currentDay = form.days[activeDay]
@@ -102,6 +114,70 @@ export function TemplateForm({
                 onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
               />
             </div>
+
+            {/* Wake Up / Sleep Time */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={mealLabelStyle}>Wake Up Time *</label>
+                <input type="time" style={mealInputStyle} value={form.wakeUpTime}
+                  onChange={(e) => setForm({ ...form, wakeUpTime: e.target.value })}
+                  onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                  onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                />
+              </div>
+              <div>
+                <label style={mealLabelStyle}>Sleep Time *</label>
+                <input type="time" style={mealInputStyle} value={form.sleepTime}
+                  onChange={(e) => setForm({ ...form, sleepTime: e.target.value })}
+                  onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                  onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                />
+              </div>
+            </div>
+
+            {/* Daily Water Intake */}
+            <div>
+              <label style={mealLabelStyle}>Daily Water Intake (litres)</label>
+              <input
+                type="number" step="0.1" min="0" max="10"
+                style={mealInputStyle}
+                placeholder="e.g. 2.0 for 2 litres"
+                value={form.waterIntakeMl ? form.waterIntakeMl / 1000 : ''}
+                onChange={(e) => setForm({ ...form, waterIntakeMl: Math.round(parseFloat(e.target.value || '0') * 1000) })}
+                onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+              {/* Live preview of water schedule */}
+              {(() => {
+                const schedule = generateWaterSchedule(form.wakeUpTime, form.sleepTime, form.waterIntakeMl)
+                if (schedule.length === 0) return null
+                return (
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', background: '#eef8ff', border: '1px solid #bee3f8' }}>
+                    <Droplets size={14} color="#1a73e8" />
+                    <span style={{ fontSize: '12px', color: '#1a73e8', fontWeight: '600' }}>
+                      {schedule.length} reminders · {schedule[0].amountMl} ml/hr
+                      <span style={{ color: '#8a9bc4', fontWeight: '500', marginLeft: '4px' }}>
+                        ({formatTime12h(schedule[0].time)} – {formatTime12h(schedule[schedule.length - 1].time)})
+                      </span>
+                    </span>
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Tips / Notes */}
+            <div>
+              <label style={mealLabelStyle}>Tips / Notes for Patient</label>
+              <textarea
+                style={{ ...mealInputStyle, minHeight: '80px', resize: 'vertical' as const }}
+                value={form.tips}
+                placeholder="e.g. Drink warm water in the morning, avoid sugary drinks..."
+                onChange={(e) => setForm({ ...form, tips: e.target.value })}
+                onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+              />
+            </div>
+
             <div>
               <label style={mealLabelStyle}>Target Goal *</label>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const }}>
@@ -157,15 +233,35 @@ export function TemplateForm({
 
               {/* Copy from another day */}
               <div style={{ position: 'relative' as const }}>
-                <button onClick={() => setShowCopyFrom(!showCopyFrom)}
+                <button onClick={() => { setShowCopyFrom(!showCopyFrom); setShowCopyTo(false) }}
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
                   Copy from <ChevronDown size={12} />
                 </button>
-
                 {showCopyFrom && (
                   <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
                     {form.days.map((day, idx) => idx !== activeDay && (
                       <button key={idx} onClick={() => copyFromDay(idx)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                        <span>{day.dayName}</span>
+                        <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{day.meals.length}m</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Copy to a specific day */}
+              <div style={{ position: 'relative' as const }}>
+                <button onClick={() => { setShowCopyTo(!showCopyTo); setShowCopyFrom(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                  Copy to <ChevronDown size={12} />
+                </button>
+                {showCopyTo && (
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
+                    {form.days.map((day, idx) => idx !== activeDay && (
+                      <button key={idx} onClick={() => copyToDay(idx)}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>

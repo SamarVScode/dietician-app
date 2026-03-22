@@ -1,32 +1,24 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-import { radius } from '../theme/spacing';
-import { typography } from '../theme/typography';
 
-export function InfoRow({
-  icon,
-  label,
-  value,
-  showDivider = true,
-}: {
+interface InfoRowProps {
   icon: string;
   label: string;
   value: string;
   showDivider?: boolean;
-}) {
+}
+
+export function InfoRow({ icon, label, value, showDivider = true }: InfoRowProps) {
   return (
     <>
       <View style={styles.row}>
-        <View style={styles.iconBox}>
-          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
-          <View style={styles.iconBoxOverlay} />
-          <MaterialCommunityIcons name={icon as never} size={16} color={colors.white} />
+        <View style={styles.iconWrap}>
+          <MaterialCommunityIcons name={icon as never} size={16} color={colors.primary} />
         </View>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{value}</Text>
+        <Text style={styles.value} numberOfLines={1}>{value}</Text>
       </View>
       {showDivider && <View style={styles.divider} />}
     </>
@@ -37,31 +29,28 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 13,
-    paddingHorizontal: 4,
+    paddingVertical: 12,
+    gap: 12,
   },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.iconBox,
+  iconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(179,255,243,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  iconBoxOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   label: {
-    ...typography.infoLabel,
-    color: colors.mutedText,
-    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.onSurfaceVariant,
+    width: 100,
   },
   value: {
-    ...typography.infoValue,
-    color: colors.white,
-    maxWidth: '50%',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.onSurface,
     textAlign: 'right',
   },
   divider: {

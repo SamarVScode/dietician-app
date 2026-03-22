@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "DietPlan",
+    "slug": "dietician-patient-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E141A"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#1565C0",
+          "defaultChannel": "dietplan"
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.dietapp.patient",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "remote-notification"]
+      }
+    },
+    "android": {
+      "package": "com.dietapp.patient",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0E141A"
+      },
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
+      ]
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { showToast } from '../utils/toast'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, query } from 'firebase/firestore'
 import { db } from '../services/firebase'
@@ -6,7 +7,7 @@ import { fetchFoodMacros } from '../services/aiService'
 import PageWrapper from '../components/layout/PageWrapper'
 import { Plus, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, Clock, Flame } from 'lucide-react'
 import type { TemplateFormData, DayPlan, FoodItem } from '../components/dietplan/mealUtils'
-import { emptyTemplateForm, formatTime12h } from '../components/dietplan/mealUtils'
+import { emptyTemplateForm, formatTime12h, generateWaterSchedule } from '../components/dietplan/mealUtils'
 import { TemplateForm } from '../components/dietplan/TemplateForm'
 import type { Meal } from '../components/dietplan/mealUtils'
 
@@ -89,10 +90,16 @@ export default function Templates() {
       setFetchingMacros(true)
       const enriched = await enrichWithMacros(data)
       setFetchingMacros(false)
-      await addDoc(collection(db, 'templates'), { ...enriched, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      const waterSchedule = generateWaterSchedule(enriched.wakeUpTime, enriched.sleepTime, enriched.waterIntakeMl)
+      await addDoc(collection(db, 'templates'), {
+        ...enriched,
+        waterSchedule,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['templates'] }); setMode('list') },
-    onError: () => setFetchingMacros(false),
+    onSuccess: (_, variables) => { showToast.templateSaved(variables.name); queryClient.invalidateQueries({ queryKey: ['templates'] }); setMode('list') },
+    onError: () => { setFetchingMacros(false); showToast.error('Failed to save template') },
   })
 
   const updateMutation = useMutation({
@@ -100,15 +107,20 @@ export default function Templates() {
       setFetchingMacros(true)
       const enriched = await enrichWithMacros(data)
       setFetchingMacros(false)
-      await updateDoc(doc(db, 'templates', id), { ...enriched, updatedAt: new Date().toISOString() })
+      const waterSchedule = generateWaterSchedule(enriched.wakeUpTime, enriched.sleepTime, enriched.waterIntakeMl)
+      await updateDoc(doc(db, 'templates', id), {
+        ...enriched,
+        waterSchedule,
+        updatedAt: new Date().toISOString(),
+      })
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['templates'] }); setMode('list'); setEditingTemplate(null) },
-    onError: () => setFetchingMacros(false),
+    onSuccess: (_, variables) => { showToast.templateSaved(variables.data.name); queryClient.invalidateQueries({ queryKey: ['templates'] }); setMode('list'); setEditingTemplate(null) },
+    onError: () => { setFetchingMacros(false); showToast.error('Failed to save template') },
   })
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await deleteDoc(doc(db, 'templates', id)) },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['templates'] }); setDeleteConfirm(null) },
+    onSuccess: () => { showToast.templateDeleted(); queryClient.invalidateQueries({ queryKey: ['templates'] }); setDeleteConfirm(null) },
   })
 
   const handleSave = (data: TemplateFormData) => {
@@ -190,7 +202,17 @@ export default function Templates() {
 
   if (mode === 'create' || mode === 'edit') {
     const initial = editingTemplate
-      ? { name: editingTemplate.name, description: editingTemplate.description, targetGoal: editingTemplate.targetGoal, duration: editingTemplate.duration ?? editingTemplate.days?.length ?? 7, days: editingTemplate.days }
+      ? {
+          name: editingTemplate.name,
+          description: editingTemplate.description,
+          targetGoal: editingTemplate.targetGoal,
+          duration: editingTemplate.duration ?? editingTemplate.days?.length ?? 7,
+          days: editingTemplate.days,
+          wakeUpTime: editingTemplate.wakeUpTime ?? '06:00',
+          sleepTime: editingTemplate.sleepTime ?? '22:00',
+          waterIntakeMl: editingTemplate.waterIntakeMl ?? 2000,
+          tips: editingTemplate.tips ?? '',
+        }
       : emptyTemplateForm(selectedDuration ?? 7)
 
     return (

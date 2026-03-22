@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { showToast } from '../utils/toast'
 import PageWrapper from '../components/layout/PageWrapper'
 import { useSettings } from '../hooks/useSettings'
 import type { SettingCategory } from '../services/settingsService'
@@ -69,6 +70,7 @@ function CategoryTab({
     await addItem(trimmed)
     setNewItem('')
     setError('')
+    showToast.settingAdded(trimmed)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -159,7 +161,7 @@ function CategoryTab({
                   {item.name}
                 </span>
                 <button
-                  onClick={() => deleteItem(item.id)}
+                  onClick={() => { deleteItem(item.id); showToast.settingDeleted() }}
                   style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#1a73e8', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
                 >
                   <X size={10} color="white" />

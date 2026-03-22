@@ -1,3 +1,16 @@
+/**
+ * HomeScreen — Luminous Vitality / Glassmorphism + Material Expressive
+ *
+ * ### 🐝 Extended Swarm Active: Rebuilding HomeScreen...
+ * - 🗺️ Product Mapper: States = loading / empty / loaded(goal, macros, water, upcomingMeal). Data via fetchActiveDietPlan + fetchTodayWaterLogs.
+ * - 📐 Layout Architect: Header (fixed opacity anim) → ScrollView with pull-to-refresh → staggered AnimatedCard sections.
+ * - 🎨 Design Systems: Dark nutTileBg tiles with teal accent bar; luminous mealKcal; deep glass meal card.
+ * - 🧩 Component Engineer: NutTile, UpcomingMealCard, WaterProgressBar, EmptyPlan as focused inner components.
+ * - ⚡ Perf-Tuner: useCallback for loadPlan; staggered delays max 480ms to prevent frame drops.
+ * - ✨ Motion Designer: AnimatedCard stagger 60/130/200/270ms; header fades in on mount.
+ * - 👁️‍🗨️ a11y Guru: PressableScale wraps cards for 44pt+ targets; waterPct as supplementary text.
+ * #### 👑 Director's Verdict: Hero goal card with teal eyebrow, nutrition tiles with dark glass + accent bars, animated water bar.
+ */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -27,7 +40,6 @@ import { AppBackground } from '../components/AppBackground';
 import { Header } from '../components/Header';
 import { FrostedCard } from '../components/FrostedCard';
 import { SectionTitle } from '../components/SectionTitle';
-import { NutCircle } from '../components/NutStat';
 import { FoodRow } from '../components/FoodRow';
 import { MacroTagColumn } from '../components/MacroTag';
 import { AnimatedCard } from '../components/AnimatedCard';
@@ -57,52 +69,43 @@ function getUpcomingMeal(meals: Meal[]): Meal | null {
   );
 }
 
-/* ─── Circular nutrition row ──────────────────────────── */
-function NutritionCircles({ calories, protein, carbs, fats }: {
+/* ─── Nutrition tile ─────────────────────────────────────────────────────── */
+function NutTile({ val, label, accent }: { val: string; label: string; accent: string }) {
+  return (
+    <View style={[styles.nutTile, { borderColor: colors.nutTileBorder }]}>
+      <View style={[styles.nutBar, { backgroundColor: accent }]} />
+      <Text style={styles.nutVal}>{val}</Text>
+      <Text style={styles.nutLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function NutritionTiles({
+  calories, protein, carbs, fats,
+}: {
   calories: number; protein: number; carbs: number; fats: number;
 }) {
   return (
-    <FrostedCard>
-      <View style={styles.circleRow}>
-        <NutCircle
-          val={String(Math.round(calories))}
-          label="Calories"
-          accent={colors.accentBlue}
-          bgTint="rgba(111,174,255,0.18)"
-        />
-        <NutCircle
-          val={`${Math.round(protein)}g`}
-          label="Protein"
-          accent={colors.accentGreen}
-          bgTint="rgba(77,219,160,0.18)"
-        />
-        <NutCircle
-          val={`${Math.round(carbs)}g`}
-          label="Carbs"
-          accent={colors.accentYellow}
-          bgTint="rgba(255,200,74,0.18)"
-        />
-        <NutCircle
-          val={`${Math.round(fats)}g`}
-          label="Fats"
-          accent={colors.accentPink}
-          bgTint="rgba(255,112,150,0.18)"
-        />
+    <FrostedCard noPadding overlayColor={colors.nutCardBg} borderColor={colors.nutCardBorder}>
+      <View style={styles.nutRow}>
+        <NutTile val={String(Math.round(calories))} label="Calories" accent={colors.accentBlue} />
+        <NutTile val={`${Math.round(protein)}g`}    label="Protein"  accent={colors.accentGreen} />
+        <NutTile val={`${Math.round(carbs)}g`}      label="Carbs"    accent={colors.accentYellow} />
+        <NutTile val={`${Math.round(fats)}g`}       label="Fats"     accent={colors.accentPink} />
       </View>
     </FrostedCard>
   );
 }
 
-/* ─── Upcoming meal card ─────────────────────────────── */
+/* ─── Upcoming meal card ──────────────────────────────────────────────────── */
 function UpcomingMealCard({ meal }: { meal: Meal }) {
   return (
-    <FrostedCard>
-      {/* Header row: icon + name/kcal + macro tags */}
+    <FrostedCard overlayColor={colors.mealCardBg} borderColor={colors.mealCardBorder}>
       <View style={styles.mealTop}>
-        <View style={styles.mealIcon}>
-          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={styles.mealIconCircle}>
+          <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={styles.mealIconOverlay} />
-          <MaterialCommunityIcons name="silverware-fork-knife" size={22} color="rgba(255,255,255,0.85)" />
+          <MaterialCommunityIcons name="silverware-fork-knife" size={22} color={colors.primary} />
         </View>
         <View style={styles.mealInfo}>
           <Text style={styles.mealName}>{meal.name}</Text>
@@ -116,7 +119,6 @@ function UpcomingMealCard({ meal }: { meal: Meal }) {
         )}
       </View>
 
-      {/* Food items */}
       {meal.items.length > 0 && (
         <View style={styles.foodList}>
           {meal.items.map((item: FoodItem, idx: number) => (
@@ -130,7 +132,7 @@ function UpcomingMealCard({ meal }: { meal: Meal }) {
   );
 }
 
-/* ─── Water progress bar ─────────────────────────────── */
+/* ─── Water progress bar ──────────────────────────────────────────────────── */
 function WaterProgressBar({
   consumedMl, targetMl, completedSlots, totalSlots,
 }: {
@@ -145,7 +147,7 @@ function WaterProgressBar({
     <FrostedCard>
       <View style={styles.waterHeader}>
         <View style={styles.waterIconWrap}>
-          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={styles.waterIconOverlay} />
           <MaterialCommunityIcons name="water" size={20} color={colors.accentBlue} />
         </View>
@@ -166,14 +168,14 @@ function WaterProgressBar({
   );
 }
 
-/* ─── Empty state ────────────────────────────────────── */
+/* ─── Empty state ─────────────────────────────────────────────────────────── */
 function EmptyPlan() {
   return (
     <FrostedCard style={styles.emptyCard}>
       <View style={styles.emptyIconWrap}>
-        <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={styles.emptyIconOverlay} />
-        <MaterialCommunityIcons name="food-off-outline" size={40} color={colors.white} />
+        <MaterialCommunityIcons name="food-off-outline" size={40} color={colors.primary} />
       </View>
       <Text style={styles.emptyTitle}>No Diet Plan Yet</Text>
       <Text style={styles.emptySub}>
@@ -183,7 +185,7 @@ function EmptyPlan() {
   );
 }
 
-/* ─── Main screen ────────────────────────────────────── */
+/* ─── Main screen ─────────────────────────────────────────────────────────── */
 export default function HomeScreen() {
   const { userProfile } = useAuthStore();
   const [plan, setPlan]             = useState<DietPlan | null>(null);
@@ -230,14 +232,9 @@ export default function HomeScreen() {
   const goal         = userProfile?.goal ?? '';
   const upcomingMeal = todayPlan ? getUpcomingMeal(todayPlan.meals) : null;
 
-  /* Header fade-in animation */
   const headerOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(headerOpacity, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(headerOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, []);
 
   return (
@@ -257,24 +254,24 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.white}
-            colors={[colors.white]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
         {loading ? (
-          <ActivityIndicator style={styles.loader} color={colors.white} size="large" />
+          <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
         ) : !plan || !todayPlan ? (
           <EmptyPlan />
         ) : (
           <>
-            {/* Goal card */}
+            {/* Goal hero card */}
             {!!goal && (
               <AnimatedCard delay={60}>
                 <PressableScale>
-                  <FrostedCard style={styles.goalCard}>
+                  <FrostedCard style={styles.goalCard} overlayColor={colors.goalCardBg} borderColor={colors.goalCardBorder}>
                     <View style={styles.goalEyebrow}>
-                      <MaterialCommunityIcons name="trending-up" size={12} color="#5db8d8" />
+                      <MaterialCommunityIcons name="trending-up" size={11} color={colors.accentTeal} />
                       <Text style={styles.goalEyebrowText}>Current Goal</Text>
                     </View>
                     <Text style={styles.goalText}>{goal}</Text>
@@ -285,7 +282,7 @@ export default function HomeScreen() {
 
             <AnimatedCard delay={130}>
               <SectionTitle title="Today's Nutrition" />
-              <NutritionCircles
+              <NutritionTiles
                 calories={macros.calories}
                 protein={macros.protein}
                 carbs={macros.carbs}
@@ -293,16 +290,13 @@ export default function HomeScreen() {
               />
             </AnimatedCard>
 
-            {/* Water progress */}
             {!!plan.waterIntakeMl && plan.waterIntakeMl > 0 && (
               <AnimatedCard delay={200}>
                 <View style={styles.sectionGap} />
                 <SectionTitle title="Hydration" />
                 <PressableScale>
                   <WaterProgressBar
-                    consumedMl={waterLogs
-                      .filter(l => l.completed)
-                      .reduce((s, l) => s + l.amountMl, 0)}
+                    consumedMl={waterLogs.filter(l => l.completed).reduce((s, l) => s + l.amountMl, 0)}
                     targetMl={plan.waterIntakeMl}
                     completedSlots={waterLogs.filter(l => l.completed).length}
                     totalSlots={plan.waterSchedule?.length ?? 0}
@@ -314,7 +308,6 @@ export default function HomeScreen() {
             <AnimatedCard delay={270}>
               <View style={styles.sectionGap} />
               <SectionTitle title="Upcoming Meal" />
-
               {upcomingMeal ? (
                 <PressableScale>
                   <UpcomingMealCard meal={upcomingMeal} />
@@ -340,58 +333,63 @@ const styles = StyleSheet.create({
   loader:        { marginTop: 60 },
   sectionGap:    { height: spacing.sectionGap },
 
-  /* Circular nutrition row */
-  circleRow: {
+  /* Nutrition tiles */
+  nutRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
+    gap: 8,
+    padding: 14,
+  },
+  nutTile: {
+    flex: 1, alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 4,
+    borderRadius: 16,
+    backgroundColor: colors.nutTileBg,
+    borderWidth: 1,
+  },
+  nutBar: { width: 22, height: 3, borderRadius: 2, marginBottom: 8 },
+  nutVal: { fontSize: 18, fontWeight: '900', color: colors.onSurface, letterSpacing: -0.5 },
+  nutLabel: {
+    fontSize: 9, fontWeight: '700',
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 3,
   },
 
-  /* Goal card — frosted with gradient text feel */
-  goalCard:         { marginBottom: spacing.sectionGap },
-  goalEyebrow:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  goalEyebrowText:  { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', color: '#5db8d8' },
-  goalText:         { fontSize: 34, fontWeight: '900', color: colors.nameText, letterSpacing: -1 },
+  /* Goal card */
+  goalCard:        { marginBottom: spacing.sectionGap },
+  goalEyebrow:     { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
+  goalEyebrowText: { fontSize: 10, fontWeight: '700', letterSpacing: 2.5, textTransform: 'uppercase', color: colors.accentTeal },
+  goalText:        { fontSize: 34, fontWeight: '900', color: colors.onSurface, letterSpacing: -1 },
 
-  /* Meal card — matching homePage.html reference */
-  mealTop:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  mealIcon:   {
-    width: 48, height: 48, borderRadius: 24,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
-    justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden',
-  },
-  mealIconOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  mealInfo:    { flex: 1 },
-  mealName:    { fontSize: 20, fontWeight: '900', color: colors.white, letterSpacing: -0.3 },
-  mealKcalRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  mealDot:     { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.mealKcal },
-  mealKcal:    { fontSize: 12.5, fontWeight: '600', color: colors.mealKcal },
-  foodList:    { gap: 0 },
-  notesText:   { fontSize: 13, fontWeight: '400', color: colors.mutedText, fontStyle: 'italic', marginTop: 10 },
+  /* Meal card */
+  mealTop:         { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  mealIconCircle:  { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  mealIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(27,21,83,0.7)' },
+  mealInfo:        { flex: 1 },
+  mealName:        { fontSize: 20, fontWeight: '800', color: colors.onSurface, letterSpacing: -0.3 },
+  mealKcalRow:     { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  mealDot:         { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.mealKcal },
+  mealKcal:        { fontSize: 12.5, fontWeight: '600', color: colors.mealKcal },
+  foodList:        { gap: 0 },
+  notesText:       { fontSize: 13, fontWeight: '400', color: colors.onSurfaceVariant, fontStyle: 'italic', marginTop: 10 },
 
   /* Water */
-  waterHeader:      { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  waterIconWrap:    { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  waterIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(111,174,255,0.10)' },
-  waterTitle:       { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
-  waterSub:         { fontSize: 10, fontWeight: '500', color: colors.mutedText },
-  waterAmountWrap:  { alignItems: 'flex-end' },
-  waterAmountValue: { fontSize: 18, fontWeight: '700', color: colors.accentBlue },
-  waterAmountTarget:{ fontSize: 10, fontWeight: '500', color: colors.mutedText },
-  progressTrack:    { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden', marginBottom: 8 },
-  progressFill:     { height: 8, borderRadius: 4, backgroundColor: colors.accentBlue },
-  waterPct:         { fontSize: 10, fontWeight: '500', color: colors.mutedText, textAlign: 'right' },
+  waterHeader:       { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  waterIconWrap:     { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  waterIconOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(111,174,255,0.08)' },
+  waterTitle:        { fontSize: 14, fontWeight: '700', color: colors.onSurface, marginBottom: 2 },
+  waterSub:          { fontSize: 10, fontWeight: '500', color: colors.onSurfaceVariant },
+  waterAmountWrap:   { alignItems: 'flex-end' },
+  waterAmountValue:  { fontSize: 18, fontWeight: '700', color: colors.accentBlue },
+  waterAmountTarget: { fontSize: 10, fontWeight: '500', color: colors.onSurfaceVariant },
+  progressTrack:     { height: 7, borderRadius: 4, backgroundColor: 'rgba(111,174,255,0.15)', overflow: 'hidden', marginBottom: 8 },
+  progressFill:      { height: 7, borderRadius: 4, backgroundColor: colors.accentBlue, shadowColor: colors.accentBlue, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 6 },
+  waterPct:          { fontSize: 10, fontWeight: '500', color: colors.onSurfaceVariant, textAlign: 'right' },
 
   /* Empty */
-  emptyCard:    { alignItems: 'center', marginTop: 24 },
+  emptyCard:        { alignItems: 'center', marginTop: 24 },
   emptyIconWrap:    { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
-  emptyIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
-  emptyTitle:   { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 8 },
-  emptySub:     { fontSize: 14, fontWeight: '400', color: colors.mutedText, textAlign: 'center', lineHeight: 22 },
-  noMealsText:  { color: colors.mutedText, textAlign: 'center' },
+  emptyIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(27,21,83,0.7)' },
+  emptyTitle:       { fontSize: 18, fontWeight: '700', color: colors.onSurface, marginBottom: 8 },
+  emptySub:         { fontSize: 14, fontWeight: '400', color: colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22 },
+  noMealsText:      { color: colors.onSurfaceVariant, textAlign: 'center' },
 });

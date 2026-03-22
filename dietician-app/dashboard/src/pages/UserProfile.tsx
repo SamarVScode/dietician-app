@@ -1,28 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { showToast } from '../utils/toast'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   doc, getDoc, updateDoc, deleteDoc,
-  collection, addDoc, getDocs, orderBy, query as fsQuery,
+  collection, addDoc, getDocs, orderBy, query as fsQuery, where,
 } from 'firebase/firestore'
 import { db } from '../services/firebase'
 import { fetchFoodMacros } from '../services/aiService'
 import PageWrapper from '../components/layout/PageWrapper'
 import { useSettings } from '../hooks/useSettings'
 import { MealBuilder } from '../components/dietplan/MealBuilder'
-import { emptyMeal, DAYS, generateDayNames, cloneMeals as cloneMealsUtil, formatTime12h } from '../components/dietplan/mealUtils'
+import { emptyMeal, DAYS, generateDayNames, cloneMeals as cloneMealsUtil, formatTime12h, generateWaterSchedule } from '../components/dietplan/mealUtils'
 import type { Meal, DayPlan as MealDayPlan, TemplateFormData } from '../components/dietplan/mealUtils'
 import {
   User, Phone, Target, Salad, Heart, Pill, FileText,
   ArrowLeft, Edit2, Save, X, Eye, EyeOff, Copy, Check,
   ClipboardList, UtensilsCrossed, Activity, KeyRound,
   ChevronRight, Trash2, Plus, BookOpen, Flame, Clock,
-  AlertTriangle, ChevronDown, ChevronUp,
+  AlertTriangle, ChevronDown, ChevronUp, CheckCircle, XCircle, Droplets, Moon, Sun,
 } from 'lucide-react'
 
 const GENDERS = ['Male', 'Female', 'Other']
-type TabKey = 'profile' | 'dietplan' | 'reports' | 'credentials'
-type PlanMode = 'idle' | 'edit' | 'template' | 'pick-custom-duration' | 'custom'
+type TabKey = 'profile' | 'dietplan' | 'wellness' | 'reports' | 'credentials'
+type PlanMode = 'idle' | 'edit' | 'template' | 'pick-custom-duration' | 'custom-wellness' | 'custom'
 
 interface UserData {
   id: string; name: string; age: number; gender: string; phone: string
@@ -43,9 +44,19 @@ interface UserData {
 
 interface DayPlan { day: number; dayName: string; meals: Meal[]; isOverride: boolean }
 
+interface MealLog {
+  mealName: string; scheduledTime: string
+  completed: boolean; completedAt: string | null
+}
+interface WaterLog {
+  scheduledTime: string; amountMl: number
+  completed: boolean; completedAt: string | null
+}
+
 interface AssignedPlan {
   id: string; templateId: string | null; templateName: string
   days: DayPlan[]; assignedAt: string; status: string
+  wakeUpTime?: string; sleepTime?: string; waterIntakeMl?: number
 }
 
 interface Template extends TemplateFormData {
@@ -102,15 +113,29 @@ export default function UserProfile() {
   const [customDays, setCustomDays]               = useState<MealDayPlan[]>(() => DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] })))
   const [customActiveDay, setCustomActiveDay]     = useState(0)
   const [showCustomCopyFrom, setShowCustomCopyFrom] = useState(false)
+  const [showCustomCopyTo, setShowCustomCopyTo]     = useState(false)
   const [isSavingCustom, setIsSavingCustom]       = useState(false)
 
-  // Edit existing plan state — 7 independent days
+  // Edit existing plan state
+  const [editDuration, setEditDuration]           = useState(7)
   const [editDays, setEditDays]                   = useState<MealDayPlan[]>([])
   const [editActiveDay, setEditActiveDay]         = useState(0)
   const [showEditCopyFrom, setShowEditCopyFrom]   = useState(false)
+  const [showEditCopyTo, setShowEditCopyTo]       = useState(false)
   const [isSavingEdit, setIsSavingEdit]           = useState(false)
   const [showDeletePlanModal, setShowDeletePlanModal] = useState(false)
   const [isDeletingPlan, setIsDeletingPlan]           = useState(false)
+
+  // Wellness fields for custom plan
+  const [customWakeUpTime, setCustomWakeUpTime]       = useState('06:00')
+  const [customSleepTime, setCustomSleepTime]         = useState('22:00')
+  const [customWaterIntakeMl, setCustomWaterIntakeMl] = useState(2000)
+
+  // Wellness tab state
+  const [wellnessWakeUp, setWellnessWakeUp]     = useState('06:00')
+  const [wellnessSleepTime, setWellnessSleepTime] = useState('22:00')
+  const [wellnessWaterMl, setWellnessWaterMl]   = useState(2000)
+  const [isSavingWellness, setIsSavingWellness] = useState(false)
 
   const { items: goalItems }       = useSettings('goals')
   const { items: preferenceItems } = useSettings('preferences')
@@ -142,7 +167,7 @@ export default function UserProfile() {
       const d = snap.docs[0]
       return { id: d.id, ...d.data() } as AssignedPlan
     },
-    enabled: activeTab === 'dietplan',
+    enabled: activeTab === 'dietplan' || activeTab === 'wellness',
   })
 
   const { data: templates = [] } = useQuery({
@@ -155,6 +180,48 @@ export default function UserProfile() {
     enabled: planMode === 'template',
   })
 
+  const todayYMD = new Date().toISOString().slice(0, 10)
+
+  const { data: todayMealLogs = [], isLoading: mealLogsLoading } = useQuery({
+    queryKey: ['mealLogs', id, todayYMD],
+    queryFn: async () => {
+      const q = fsQuery(
+        collection(db, 'users', id!, 'mealLogs'),
+        where('date', '==', todayYMD),
+      )
+      const docs = (await getDocs(q)).docs.map(d => d.data()) as MealLog[]
+      return docs.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
+    },
+    enabled: !!id && activeTab === 'reports',
+  })
+
+  const { data: todayWaterLogs = [], isLoading: waterLogsLoading } = useQuery({
+    queryKey: ['waterLogs', id, todayYMD],
+    queryFn: async () => {
+      const q = fsQuery(
+        collection(db, 'users', id!, 'waterLogs'),
+        where('date', '==', todayYMD),
+      )
+      const docs = (await getDocs(q)).docs.map(d => d.data()) as WaterLog[]
+      return docs.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
+    },
+    enabled: !!id && activeTab === 'reports',
+  })
+
+  // Sync wellness tab inputs whenever the active plan loads or changes
+  useEffect(() => {
+    if (activePlan) {
+      setWellnessWakeUp(activePlan.wakeUpTime ?? '06:00')
+      setWellnessSleepTime(activePlan.sleepTime ?? '22:00')
+      setWellnessWaterMl(activePlan.waterIntakeMl ?? 2000)
+    }
+  }, [activePlan])
+
+  function fmt12h(hhmm: string) {
+    const [h, m] = hhmm.split(':').map(Number)
+    return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+  }
+
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<UserData>) => {
       await updateDoc(doc(db, 'users', id!), { ...data, updatedAt: new Date().toISOString() })
@@ -163,12 +230,20 @@ export default function UserProfile() {
       queryClient.invalidateQueries({ queryKey: ['user', id] })
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setIsEditing(false)
+      showToast.profileSaved()
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: async () => { await deleteDoc(doc(db, 'users', id!)) },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); navigate('/dashboard') },
+    mutationFn: async () => {
+      // Firestore does not auto-delete subcollections — delete them first
+      for (const sub of ['dietPlans', 'mealLogs', 'waterLogs']) {
+        const snap = await getDocs(collection(db, 'users', id!, sub))
+        for (const d of snap.docs) await deleteDoc(d.ref)
+      }
+      await deleteDoc(doc(db, 'users', id!))
+    },
+    onSuccess: () => { showToast.userDeleted(user?.name ?? 'Patient'); queryClient.invalidateQueries({ queryKey: ['users'] }); navigate('/dashboard') },
   })
 
   const handleEdit   = () => { if (user) { setEditForm({ ...user }); setIsEditing(true) } }
@@ -218,7 +293,8 @@ export default function UserProfile() {
       await queryClient.invalidateQueries({ queryKey: ['user', id] })
       await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
       setAssignSuccess(true); resetPlanMode()
-    } catch (e) { console.error(e) }
+      showToast.planAssigned()
+    } catch (e) { console.error(e); showToast.error('Failed to assign plan') }
     finally { setIsAssigning(false) }
   }
 
@@ -257,22 +333,30 @@ export default function UserProfile() {
       await addDoc(collection(db, 'users', id!, 'dietPlans'), {
         templateId: null, templateName: customPlanName.trim(),
         days: enrichedDays,
+        wakeUpTime: customWakeUpTime,
+        sleepTime: customSleepTime,
+        waterIntakeMl: customWaterIntakeMl,
+        waterSchedule: generateWaterSchedule(customWakeUpTime, customSleepTime, customWaterIntakeMl),
         assignedAt: new Date().toISOString(), assignedBy: 'admin', status: 'active',
       })
       await updateDoc(doc(db, 'users', id!), { status: 'active', updatedAt: new Date().toISOString() })
       await queryClient.invalidateQueries({ queryKey: ['user', id] })
       await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
       setAssignSuccess(true); resetPlanMode()
-    } catch (e) { console.error(e) }
+      showToast.planAssigned()
+    } catch (e) { console.error(e); showToast.error('Failed to save plan') }
     finally { setIsSavingCustom(false) }
   }
 
   const handleStartEditPlan = () => {
     if (!activePlan) return
-    const days: MealDayPlan[] = DAYS.map((dayName, dayIndex) => {
+    const duration = activePlan.days.length || 7
+    const dayNames = duration === 7 ? DAYS : generateDayNames(duration)
+    const days: MealDayPlan[] = dayNames.map((dayName, dayIndex) => {
       const existing = activePlan.days.find((d) => d.day === dayIndex + 1)
       return { dayIndex, dayName, meals: cloneMeals(existing?.meals ?? [emptyMeal()]) }
     })
+    setEditDuration(duration)
     setEditDays(days)
     setEditActiveDay(0)
     setPlanMode('edit')
@@ -284,11 +368,13 @@ export default function UserProfile() {
     try {
       await updateDoc(doc(db, 'users', id!, 'dietPlans', activePlan.id), {
         days: editDays.map((d) => ({ day: d.dayIndex + 1, dayName: d.dayName, meals: cloneMeals(d.meals), isOverride: false })),
+        duration: editDuration,
         updatedAt: new Date().toISOString(),
       })
       await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
       setAssignSuccess(true); setPlanMode('idle')
-    } catch (e) { console.error(e) }
+      showToast.planSaved()
+    } catch (e) { console.error(e); showToast.error('Failed to save plan') }
     finally { setIsSavingEdit(false) }
   }
 
@@ -302,7 +388,8 @@ export default function UserProfile() {
       queryClient.invalidateQueries({ queryKey: ['user', id] })
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setShowDeletePlanModal(false)
-    } catch (e) { console.error(e) }
+      showToast.planRemoved()
+    } catch (e) { console.error(e); showToast.error('Failed to remove plan') }
     finally { setIsDeletingPlan(false) }
   }
 
@@ -310,7 +397,26 @@ export default function UserProfile() {
     setPlanMode('idle'); setSelectedTemplateId(null)
     setExpandedTemplateId(null); setExpandedDay(null); setViewDay(1)
     setCustomDuration(7); setCustomPlanName(''); setCustomDays(DAYS.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] }))); setCustomActiveDay(0); setShowCustomCopyFrom(false)
-    setEditDays([]); setEditActiveDay(0); setShowEditCopyFrom(false)
+    setCustomWakeUpTime('06:00'); setCustomSleepTime('22:00'); setCustomWaterIntakeMl(2000)
+    setShowCustomCopyTo(false)
+    setEditDuration(7); setEditDays([]); setEditActiveDay(0); setShowEditCopyFrom(false); setShowEditCopyTo(false)
+  }
+
+  const handleSaveWellness = async () => {
+    if (!activePlan) return
+    setIsSavingWellness(true)
+    try {
+      await updateDoc(doc(db, 'users', id!, 'dietPlans', activePlan.id), {
+        wakeUpTime: wellnessWakeUp,
+        sleepTime: wellnessSleepTime,
+        waterIntakeMl: wellnessWaterMl,
+        waterSchedule: generateWaterSchedule(wellnessWakeUp, wellnessSleepTime, wellnessWaterMl),
+        updatedAt: new Date().toISOString(),
+      })
+      await queryClient.invalidateQueries({ queryKey: ['activePlan', id] })
+      showToast.success('Wellness settings saved')
+    } catch (e) { console.error(e); showToast.error('Failed to save wellness settings') }
+    finally { setIsSavingWellness(false) }
   }
 
   const updateEditDayMeals = (dayIndex: number, meals: Meal[]) =>
@@ -319,24 +425,60 @@ export default function UserProfile() {
   const updateCustomDayMeals = (dayIndex: number, meals: Meal[]) =>
     setCustomDays((prev) => prev.map((d) => d.dayIndex === dayIndex ? { ...d, meals } : d))
 
+  const handleChangeEditDuration = (newDuration: number) => {
+    if (newDuration === editDuration) return
+    const dayNames = newDuration === 7 ? DAYS : generateDayNames(newDuration)
+    setEditDuration(newDuration)
+    setEditDays((prev) => {
+      if (newDuration > prev.length) {
+        const extra = dayNames.slice(prev.length).map((dayName, i) => ({
+          dayIndex: prev.length + i, dayName, meals: [emptyMeal()],
+        }))
+        return [...prev.map((d, i) => ({ ...d, dayName: dayNames[i] })), ...extra]
+      }
+      return prev.slice(0, newDuration).map((d, i) => ({ ...d, dayName: dayNames[i] }))
+    })
+    setEditActiveDay((prev) => Math.min(prev, newDuration - 1))
+  }
+
   const applyEditDayToAll = () => {
     const meals = editDays[editActiveDay]?.meals ?? []
-    setEditDays((prev) => prev.map((d) => ({ ...d, meals: cloneMeals(meals) })))
+    setEditDays((prev) => prev.map((d) =>
+      d.dayIndex === editActiveDay ? d : { ...d, meals: cloneMeals(meals) }
+    ))
+    showToast.appliedToAll(editDays[editActiveDay]?.dayName ?? '')
+  }
+
+  const copyEditDayTo = (toIdx: number) => {
+    updateEditDayMeals(toIdx, cloneMeals(editDays[editActiveDay]?.meals ?? []))
+    setShowEditCopyTo(false)
+    showToast.copiedTo(editDays[toIdx]?.dayName ?? '')
   }
 
   const copyEditDayFrom = (fromIdx: number) => {
     updateEditDayMeals(editActiveDay, cloneMeals(editDays[fromIdx]?.meals ?? []))
     setShowEditCopyFrom(false)
+    showToast.copiedFrom(editDays[fromIdx]?.dayName ?? '')
   }
 
   const applyCustomDayToAll = () => {
     const meals = customDays[customActiveDay]?.meals ?? []
-    setCustomDays((prev) => prev.map((d) => ({ ...d, meals: cloneMeals(meals) })))
+    setCustomDays((prev) => prev.map((d) =>
+      d.dayIndex === customActiveDay ? d : { ...d, meals: cloneMeals(meals) }
+    ))
+    showToast.appliedToAll(customDays[customActiveDay]?.dayName ?? '')
+  }
+
+  const copyCustomDayTo = (toIdx: number) => {
+    updateCustomDayMeals(toIdx, cloneMeals(customDays[customActiveDay]?.meals ?? []))
+    setShowCustomCopyTo(false)
+    showToast.copiedTo(customDays[toIdx]?.dayName ?? '')
   }
 
   const copyCustomDayFrom = (fromIdx: number) => {
     updateCustomDayMeals(customActiveDay, cloneMeals(customDays[fromIdx]?.meals ?? []))
     setShowCustomCopyFrom(false)
+    showToast.copiedFrom(customDays[fromIdx]?.dayName ?? '')
   }
 
   const copyMealToEditDays = (meal: Meal, dayIndices: number[]) => {
@@ -486,6 +628,7 @@ export default function UserProfile() {
           {([
             { key: 'profile' as TabKey,     label: 'Profile Info',  icon: <User size={14} /> },
             { key: 'dietplan' as TabKey,    label: 'Diet Plan',     icon: <UtensilsCrossed size={14} /> },
+            { key: 'wellness' as TabKey,    label: 'Wellness',      icon: <Droplets size={14} /> },
             { key: 'reports' as TabKey,     label: 'Reports',       icon: <Activity size={14} /> },
             { key: 'credentials' as TabKey, label: 'Credentials',   icon: <KeyRound size={14} /> },
           ]).map((tab) => (
@@ -730,15 +873,26 @@ export default function UserProfile() {
                   </button>
                 </div>
 
+                {/* Duration picker */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const }}>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#8a9bc4' }}>Duration:</span>
+                  {[7, 15, 30].map((d) => (
+                    <button key={d} onClick={() => handleChangeEditDuration(d)}
+                      style={{ padding: '6px 14px', borderRadius: '40px', border: editDuration === d ? '2px solid #1a73e8' : '2px solid #e8eef8', background: editDuration === d ? '#eef3ff' : '#f8fafd', color: editDuration === d ? '#1a73e8' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
+                      {d === 7 ? 'Weekly (7)' : `${d} Days`}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Day tabs */}
-                <div className="flex gap-0.5 sm:gap-1 p-1.5 sm:p-2 rounded-[16px] max-sm:[&_button]:![padding:8px_3px] max-sm:[&_button]:![font-size:10px] max-sm:[&_button]:!rounded-lg" style={{ background: 'white', border: '1px solid #e8eef8' }}>
-                  {DAYS.map((day, idx) => {
+                <div className="flex gap-0.5 sm:gap-1 p-1.5 sm:p-2 rounded-[16px] overflow-x-auto max-sm:[&_button]:![padding:8px_3px] max-sm:[&_button]:![font-size:10px] max-sm:[&_button]:!rounded-lg" style={{ background: 'white', border: '1px solid #e8eef8' }}>
+                  {editDays.map((d, idx) => {
                     const isActive = editActiveDay === idx
-                    const mealCount = editDays[idx]?.meals.length ?? 0
+                    const mealCount = d.meals.length
                     return (
-                      <button key={day} onClick={() => { setEditActiveDay(idx); setShowEditCopyFrom(false) }}
-                        style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>
-                        <span>{day.slice(0, 3)}</span>
+                      <button key={`${d.dayName}-${idx}`} onClick={() => { setEditActiveDay(idx); setShowEditCopyFrom(false); setShowEditCopyTo(false) }}
+                        style={{ flex: editDuration <= 7 ? 1 : undefined, minWidth: editDuration > 7 ? '52px' : undefined, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '3px', padding: '10px 4px', borderRadius: '12px', border: 'none', background: isActive ? '#1a73e8' : 'transparent', color: isActive ? 'white' : '#8a9bc4', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0 }}>
+                        <span>{editDuration <= 7 ? d.dayName.slice(0, 3) : String(idx + 1)}</span>
                         <span style={{ fontSize: '10px', fontWeight: '600', opacity: 0.75 }}>{mealCount}m</span>
                       </button>
                     )
@@ -748,7 +902,7 @@ export default function UserProfile() {
                 {/* Actions bar */}
                 <div className="flex flex-col items-start gap-2 p-2.5 sm:p-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] max-sm:[&>div:last-child]:!w-full max-sm:[&>div:last-child]:!justify-end" style={{ background: 'white', border: '1px solid #e8eef8' }}>
                   <div style={{ fontSize: '14px', fontWeight: '700', color: '#0d1b3e' }}>
-                    {DAYS[editActiveDay]}
+                    {editDays[editActiveDay]?.dayName}
                     <span style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginLeft: '8px' }}>
                       {editDays[editActiveDay]?.meals.length ?? 0} meal{(editDays[editActiveDay]?.meals.length ?? 0) !== 1 ? 's' : ''}
                     </span>
@@ -759,19 +913,38 @@ export default function UserProfile() {
                       <Copy size={12} /> Apply to all days
                     </button>
                     <div style={{ position: 'relative' as const }}>
-                      <button onClick={() => setShowEditCopyFrom(!showEditCopyFrom)}
+                      <button onClick={() => { setShowEditCopyFrom(!showEditCopyFrom); setShowEditCopyTo(false) }}
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
                         Copy from <ChevronDown size={12} />
                       </button>
                       {showEditCopyFrom && (
-                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px' }}>
-                          {DAYS.map((day, idx) => idx !== editActiveDay && (
-                            <button key={day} onClick={() => copyEditDayFrom(idx)}
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px', maxHeight: '220px', overflowY: 'auto' as const }}>
+                          {editDays.map((d, idx) => idx !== editActiveDay && (
+                            <button key={`${d.dayName}-${idx}`} onClick={() => copyEditDayFrom(idx)}
                               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
-                              <span>{day}</span>
-                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{editDays[idx]?.meals.length}m</span>
+                              <span>{d.dayName}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{d.meals.length}m</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative' as const }}>
+                      <button onClick={() => { setShowEditCopyTo(!showEditCopyTo); setShowEditCopyFrom(false) }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                        Copy to <ChevronDown size={12} />
+                      </button>
+                      {showEditCopyTo && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px', maxHeight: '220px', overflowY: 'auto' as const }}>
+                          {editDays.map((d, idx) => idx !== editActiveDay && (
+                            <button key={`${d.dayName}-${idx}`} onClick={() => copyEditDayTo(idx)}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                              <span>{d.dayName}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{d.meals.length}m</span>
                             </button>
                           ))}
                         </div>
@@ -785,7 +958,7 @@ export default function UserProfile() {
                     key={editActiveDay}
                     meals={editDays[editActiveDay]?.meals ?? []}
                     onChange={(meals) => updateEditDayMeals(editActiveDay, meals)}
-                    dayNames={DAYS}
+                    dayNames={editDays.map((d) => d.dayName)}
                     currentDayIndex={editActiveDay}
                     onCopyMealToDays={copyMealToEditDays}
                   />
@@ -793,7 +966,7 @@ export default function UserProfile() {
 
                 <div className="flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4.5 sm:px-6 rounded-[14px] sm:rounded-[20px]" style={{ background: 'white', border: '1px solid #e8eef8', boxShadow: '0 2px 12px rgba(26,115,232,0.04)' }}>
                   <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500' }}>
-                    7 days · {editDays.reduce((s, d) => s + d.meals.length, 0)} total meals
+                    {editDuration} days · {editDays.reduce((s, d) => s + d.meals.length, 0)} total meals
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={resetPlanMode} style={{ padding: '11px 20px', borderRadius: '14px', background: '#f8fafd', border: '2px solid #e8eef8', color: '#4a5568', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
@@ -989,10 +1162,124 @@ export default function UserProfile() {
                     const dayNames = generateDayNames(customDuration)
                     setCustomDays(dayNames.map((dayName, dayIndex) => ({ dayIndex, dayName, meals: [emptyMeal()] })))
                     setCustomActiveDay(0)
-                    setPlanMode('custom')
+                    setPlanMode('custom-wellness')
                   }}
                   style={{ padding: '13px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.35)' }}>
                   Continue
+                </button>
+              </div>
+            )}
+
+            {/* ── CUSTOM WELLNESS STEP ── */}
+            {planMode === 'custom-wellness' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Plan Details</div>
+                    <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500', marginTop: '2px' }}>
+                      {customDuration}-day plan · Set name & wellness schedule
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setPlanMode('pick-custom-duration')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', borderRadius: '12px', background: '#f8fafd', border: '1.5px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                      ← Back
+                    </button>
+                    <button onClick={resetPlanMode} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', borderRadius: '12px', background: '#f8fafd', border: '1.5px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                      <X size={13} /> Cancel
+                    </button>
+                  </div>
+                </div>
+
+                {/* Plan Name */}
+                <div className={cardClass} style={cardStyle}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '8px', display: 'block' }}>Plan Name *</label>
+                  <input value={customPlanName} onChange={(e) => setCustomPlanName(e.target.value)}
+                    placeholder={`e.g. ${user.name}'s ${user.goal} Plan`}
+                    style={{ width: '100%', padding: '12px 16px', borderRadius: '12px', border: '2px solid #e8eef8', background: '#f8fafd', fontSize: '15px', fontWeight: '600', color: '#0d1b3e', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const }}
+                    onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                    onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                  />
+                </div>
+
+                {/* Wellness settings */}
+                <div className={cardClass} style={cardStyle}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '14px', display: 'block' }}>Wellness Schedule</label>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                    <div>
+                      <label style={labelStyle}>Wake Up Time</label>
+                      <input type="time" value={customWakeUpTime} onChange={(e) => setCustomWakeUpTime(e.target.value)}
+                        style={inputStyle}
+                        onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                        onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Sleep Time</label>
+                      <input type="time" value={customSleepTime} onChange={(e) => setCustomSleepTime(e.target.value)}
+                        style={inputStyle}
+                        onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                        onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={labelStyle}>Daily Water Target (litres)</label>
+                    <input type="number" step="0.1" min="0" max="10"
+                      value={customWaterIntakeMl / 1000}
+                      onChange={(e) => setCustomWaterIntakeMl(Math.round(parseFloat(e.target.value || '0') * 1000))}
+                      placeholder="e.g. 2.0"
+                      style={inputStyle}
+                      onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                      onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                    />
+                  </div>
+                  {/* Live schedule preview — visible as soon as wake/sleep are valid */}
+                  {(() => {
+                    const [wh, wm] = customWakeUpTime.split(':').map(Number)
+                    const [sh, sm] = customSleepTime.split(':').map(Number)
+                    if (isNaN(wh) || isNaN(sh)) return null
+                    const wakeMin = wh * 60 + (wm || 0)
+                    const sleepMin = sh * 60 + (sm || 0)
+                    if (sleepMin <= wakeMin) return null
+                    const slotCount = Math.floor((sleepMin - wakeMin) / 60)
+                    if (slotCount === 0) return null
+                    const mlPerSlot = customWaterIntakeMl > 0 ? Math.round(customWaterIntakeMl / slotCount) : null
+                    return (
+                      <div style={{ padding: '14px', borderRadius: '12px', background: '#eef8ff', border: '1px solid #bee3f8' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                          <Droplets size={13} color="#1a73e8" />
+                          <span style={{ fontSize: '11px', fontWeight: '700', color: '#1a73e8', textTransform: 'uppercase' as const, letterSpacing: '0.6px' }}>Schedule Preview</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                          <div>
+                            <div style={{ fontSize: '10px', fontWeight: '700', color: '#8a9bc4', textTransform: 'uppercase' as const, letterSpacing: '0.6px', marginBottom: '4px' }}>Wake Up</div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#1a73e8' }}>{formatTime12h(customWakeUpTime)}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '10px', fontWeight: '700', color: '#8a9bc4', textTransform: 'uppercase' as const, letterSpacing: '0.6px', marginBottom: '4px' }}>Sleep</div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#7c3aed' }}>{formatTime12h(customSleepTime)}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '10px', fontWeight: '700', color: '#8a9bc4', textTransform: 'uppercase' as const, letterSpacing: '0.6px', marginBottom: '4px' }}>Reminders</div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#0d1b3e' }}>{slotCount}×</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '10px', fontWeight: '700', color: '#8a9bc4', textTransform: 'uppercase' as const, letterSpacing: '0.6px', marginBottom: '4px' }}>Per Slot</div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: mlPerSlot ? '#10b981' : '#d0d8f0' }}>{mlPerSlot ? `${mlPerSlot}ml` : '—'}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                <button
+                  disabled={!customPlanName.trim()}
+                  onClick={() => setPlanMode('custom')}
+                  style={{ padding: '13px', borderRadius: '14px', background: !customPlanName.trim() ? '#e8eef8' : 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: !customPlanName.trim() ? '#b0bdd8' : 'white', fontWeight: '700', cursor: !customPlanName.trim() ? 'not-allowed' : 'pointer', boxShadow: !customPlanName.trim() ? 'none' : '0 4px 16px rgba(26,115,232,0.35)' }}>
+                  Continue to Meal Builder →
                 </button>
               </div>
             )}
@@ -1008,16 +1295,6 @@ export default function UserProfile() {
                   <button onClick={resetPlanMode} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#f8fafd', border: '1.5px solid #e8eef8', color: '#4a5568', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                     <X size={13} /> Cancel
                   </button>
-                </div>
-
-                <div className={cardClass} style={cardStyle}>
-                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '8px', display: 'block' }}>Plan Name *</label>
-                  <input value={customPlanName} onChange={(e) => setCustomPlanName(e.target.value)}
-                    placeholder={`e.g. ${user.name}'s ${user.goal} Plan`}
-                    style={{ width: '100%', padding: '12px 16px', borderRadius: '12px', border: '2px solid #e8eef8', background: '#f8fafd', fontSize: '15px', fontWeight: '600', color: '#0d1b3e', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const }}
-                    onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
-                    onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
-                  />
                 </div>
 
                 {/* Day tabs */}
@@ -1049,7 +1326,7 @@ export default function UserProfile() {
                       <Copy size={12} /> Apply to all days
                     </button>
                     <div style={{ position: 'relative' as const }}>
-                      <button onClick={() => setShowCustomCopyFrom(!showCustomCopyFrom)}
+                      <button onClick={() => { setShowCustomCopyFrom(!showCustomCopyFrom); setShowCustomCopyTo(false) }}
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
                         Copy from <ChevronDown size={12} />
                       </button>
@@ -1057,6 +1334,25 @@ export default function UserProfile() {
                         <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px', maxHeight: '250px', overflowY: 'auto' }}>
                           {customDays.map((day, idx) => idx !== customActiveDay && (
                             <button key={idx} onClick={() => copyCustomDayFrom(idx)}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                              <span>{day.dayName}</span>
+                              <span style={{ fontSize: '11px', color: '#8a9bc4', fontWeight: '500' }}>{day.meals.length}m</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative' as const }}>
+                      <button onClick={() => { setShowCustomCopyTo(!showCustomCopyTo); setShowCustomCopyFrom(false) }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1px solid #e8eef8', color: '#4a5568', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                        Copy to <ChevronDown size={12} />
+                      </button>
+                      {showCustomCopyTo && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'white', border: '1px solid #e8eef8', borderRadius: '12px', padding: '8px', display: 'flex', flexDirection: 'column' as const, gap: '2px', zIndex: 20, boxShadow: '0 8px 24px rgba(26,115,232,0.12)', minWidth: '150px', maxHeight: '250px', overflowY: 'auto' }}>
+                          {customDays.map((day, idx) => idx !== customActiveDay && (
+                            <button key={idx} onClick={() => copyCustomDayTo(idx)}
                               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#0d1b3e', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: '100%', textAlign: 'left' as const }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f4ff' }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
@@ -1102,23 +1398,217 @@ export default function UserProfile() {
         {/* ═══════ REPORTS TAB ═══════ */}
         {activeTab === 'reports' && (
           <div className={cardClass} style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px', padding: '20px 22px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={17} color="#3b82f6" /></div>
-                <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Daily Reports</div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Today's Report</div>
+                  <div style={{ fontSize: '11px', color: '#b0bdd8', fontWeight: '500', marginTop: '1px' }}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                </div>
               </div>
-              <button onClick={() => navigate(`/users/${id}/reports`)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#eef3ff', border: '1px solid #dbe8ff', color: '#1a73e8', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+              <button onClick={() => navigate(`/users/${id}/reports`)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '12px', background: '#eef3ff', border: '1px solid #dbe8ff', color: '#1a73e8', fontSize: '13px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}>
                 <ClipboardList size={14} /> View All Reports
               </button>
             </div>
-            <div className="px-5 py-8 sm:px-10 sm:py-15" style={{ textAlign: 'center' }}>
-              <div style={{ width: '72px', height: '72px', borderRadius: '22px', background: '#f8fafd', border: '1px solid #e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><ClipboardList size={30} color="#d0d8f0" /></div>
-              <div style={{ fontSize: '16px', fontWeight: '700', color: '#4a5568', marginBottom: '8px' }}>View Full Reports</div>
-              <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500', marginBottom: '24px' }}>See all daily reports submitted by this patient</div>
-              <button onClick={() => navigate(`/users/${id}/reports`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '13px 28px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.35)' }}>
-                <Activity size={17} /> Open Reports <ChevronRight size={15} />
-              </button>
+
+            <div style={{ padding: '0 22px 22px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+              {/* Summary row */}
+              {!mealLogsLoading && !waterLogsLoading && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ padding: '14px 16px', borderRadius: '14px', background: '#f8fafd', border: '1px solid #e8eef8' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '8px' }}>Meal Adherence</div>
+                    {todayMealLogs.length > 0 ? (
+                      <>
+                        <div style={{ fontSize: '26px', fontWeight: '800', color: (() => { const pct = Math.round((todayMealLogs.filter(l => l.completed).length / todayMealLogs.length) * 100); return pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444' })() }}>
+                          {Math.round((todayMealLogs.filter(l => l.completed).length / todayMealLogs.length) * 100)}%
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#b0bdd8', fontWeight: '500', marginTop: '3px' }}>{todayMealLogs.filter(l => l.completed).length}/{todayMealLogs.length} completed</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: '#b0bdd8' }}>—</div>
+                    )}
+                  </div>
+                  <div style={{ padding: '14px 16px', borderRadius: '14px', background: '#f8fafd', border: '1px solid #e8eef8' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '8px' }}>Water Today</div>
+                    {todayWaterLogs.length > 0 ? (
+                      <>
+                        <div style={{ fontSize: '26px', fontWeight: '800', color: '#10b981' }}>
+                          {(() => { const ml = todayWaterLogs.filter(l => l.completed).reduce((s, l) => s + l.amountMl, 0); return ml >= 1000 ? `${(ml / 1000).toFixed(1)}L` : `${ml}ml` })()}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#b0bdd8', fontWeight: '500', marginTop: '3px' }}>{todayWaterLogs.filter(l => l.completed).length}/{todayWaterLogs.length} slots done</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: '#b0bdd8' }}>—</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Meal logs */}
+              {mealLogsLoading ? (
+                <div style={{ height: '80px', borderRadius: '14px', background: '#f0f4ff' }} />
+              ) : todayMealLogs.length === 0 ? (
+                <div style={{ padding: '20px', borderRadius: '14px', background: '#f8fafd', border: '1px solid #e8eef8', textAlign: 'center' }}>
+                  <UtensilsCrossed size={22} color="#d0d8f0" style={{ margin: '0 auto 8px' }} />
+                  <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500' }}>No meal logs for today yet</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
+                    <UtensilsCrossed size={13} color="#3b82f6" />
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: '#0d1b3e', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Meals</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {todayMealLogs.map((meal, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderRadius: '13px', background: meal.completed ? '#f0fdf4' : '#fff8f8', border: `1px solid ${meal.completed ? '#bbf7d0' : '#fecaca'}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                          {meal.completed ? <CheckCircle size={15} color="#22c55e" /> : <XCircle size={15} color="#ef4444" />}
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#0d1b3e' }}>{meal.mealName}</div>
+                            <div style={{ fontSize: '11px', color: '#b0bdd8', fontWeight: '500', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={9} /> {fmt12h(meal.scheduledTime)}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: '600', color: meal.completed ? '#22c55e' : '#ef4444' }}>
+                          {meal.completed && meal.completedAt ? `Done ${new Date(meal.completedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : 'Missed'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Water logs */}
+              {waterLogsLoading ? (
+                <div style={{ height: '60px', borderRadius: '14px', background: '#f0f4ff' }} />
+              ) : todayWaterLogs.length === 0 ? (
+                <div style={{ padding: '20px', borderRadius: '14px', background: '#f8fafd', border: '1px solid #e8eef8', textAlign: 'center' }}>
+                  <Droplets size={22} color="#d0d8f0" style={{ margin: '0 auto 8px' }} />
+                  <div style={{ fontSize: '13px', color: '#b0bdd8', fontWeight: '500' }}>No water logs for today yet</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
+                    <Droplets size={13} color="#10b981" />
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: '#0d1b3e', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Water</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: '8px' }}>
+                    {todayWaterLogs.map((slot, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 11px', borderRadius: '12px', background: slot.completed ? '#f0fdf4' : '#f8fafd', border: `1px solid ${slot.completed ? '#bbf7d0' : '#e8eef8'}` }}>
+                        <Droplets size={12} color={slot.completed ? '#10b981' : '#d0d8f0'} />
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: slot.completed ? '#0d1b3e' : '#b0bdd8' }}>{slot.amountMl}ml</div>
+                          <div style={{ fontSize: '10px', color: '#b0bdd8', fontWeight: '500' }}>{fmt12h(slot.scheduledTime)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
+          </div>
+        )}
+
+        {/* ═══════ WELLNESS TAB ═══════ */}
+        {activeTab === 'wellness' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {!activePlan ? (
+              <div className={cardClass} style={{ ...cardStyle, textAlign: 'center' as const, padding: '48px 24px' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <Droplets size={24} color="#1a73e8" />
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: '#0d1b3e', marginBottom: '6px' }}>No Active Plan</div>
+                <div style={{ fontSize: '13px', color: '#8a9bc4', fontWeight: '500' }}>Assign a diet plan first to configure wellness settings.</div>
+              </div>
+            ) : (
+              <>
+                {/* Header */}
+                <div className={cardClass} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '13px', background: '#eef3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Droplets size={20} color="#1a73e8" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#0d1b3e' }}>Wellness Settings</div>
+                    <div style={{ fontSize: '12px', color: '#8a9bc4', fontWeight: '500', marginTop: '2px' }}>Controls sleep schedule and water reminders on the mobile app for <strong style={{ color: '#0d1b3e' }}>{user.name}</strong></div>
+                  </div>
+                </div>
+
+                {/* Sleep schedule */}
+                <div className={cardClass} style={cardStyle}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '16px', display: 'block' }}>Sleep Schedule</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '5px' }}><Sun size={12} color="#f59e0b" /> Wake Up Time</label>
+                      <input type="time" value={wellnessWakeUp} onChange={(e) => setWellnessWakeUp(e.target.value)}
+                        style={inputStyle}
+                        onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                        onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '5px' }}><Moon size={12} color="#7c3aed" /> Sleep Time</label>
+                      <input type="time" value={wellnessSleepTime} onChange={(e) => setWellnessSleepTime(e.target.value)}
+                        style={inputStyle}
+                        onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                        onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Water */}
+                <div className={cardClass} style={cardStyle}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#b0bdd8', textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: '16px', display: 'block' }}>Daily Water Target</label>
+                  <input type="number" step="0.1" min="0" max="10"
+                    value={wellnessWaterMl / 1000}
+                    onChange={(e) => setWellnessWaterMl(Math.round(parseFloat(e.target.value || '0') * 1000))}
+                    placeholder="e.g. 2.0"
+                    style={{ ...inputStyle, maxWidth: '180px' }}
+                    onFocus={(e) => { e.target.style.border = '2px solid #1a73e8'; e.target.style.background = '#fafcff' }}
+                    onBlur={(e) => { e.target.style.border = '2px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                  />
+                  <div style={{ fontSize: '12px', color: '#b0bdd8', marginTop: '6px' }}>litres per day</div>
+                </div>
+
+                {/* Live schedule preview — recomputes on every wake/sleep/water change */}
+                {(() => {
+                  const schedule = generateWaterSchedule(wellnessWakeUp, wellnessSleepTime, wellnessWaterMl)
+                  if (schedule.length === 0) return null
+                  const mlPerSlot = schedule[0]?.amountMl ?? 0
+                  return (
+                    <div className={cardClass} style={{ ...cardStyle, background: '#eef8ff', border: '1px solid #bee3f8' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
+                        <Droplets size={13} color="#1a73e8" />
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: '#1a73e8', textTransform: 'uppercase' as const, letterSpacing: '0.6px' }}>Reminder Preview</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                        {[
+                          { label: 'Wake Up',   value: formatTime12h(wellnessWakeUp),              color: '#1a73e8' },
+                          { label: 'Sleep',     value: formatTime12h(wellnessSleepTime),            color: '#7c3aed' },
+                          { label: 'Reminders', value: `${schedule.length}`,                        color: '#0d1b3e' },
+                          { label: 'Per Slot',  value: mlPerSlot ? `${mlPerSlot} ml` : '—',        color: mlPerSlot ? '#10b981' : '#d0d8f0' },
+                        ].map((stat) => (
+                          <div key={stat.label}>
+                            <div style={{ fontSize: '10px', fontWeight: '700', color: '#8a9bc4', textTransform: 'uppercase' as const, letterSpacing: '0.6px', marginBottom: '4px' }}>{stat.label}</div>
+                            <div style={{ fontSize: '16px', fontWeight: '800', color: stat.color }}>{stat.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Save button */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={handleSaveWellness} disabled={isSavingWellness}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 28px', borderRadius: '14px', background: 'linear-gradient(135deg, #1a73e8, #1557b0)', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', cursor: isSavingWellness ? 'not-allowed' : 'pointer', boxShadow: '0 4px 16px rgba(26,115,232,0.35)', opacity: isSavingWellness ? 0.7 : 1 }}>
+                    {isSavingWellness ? <><div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', animation: 'spin 0.8s linear infinite' }} /> Saving...</> : <><Save size={15} /> Save Wellness Settings</>}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

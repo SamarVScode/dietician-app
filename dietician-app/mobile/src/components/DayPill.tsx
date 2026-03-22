@@ -22,8 +22,8 @@ export function DayPill({
       <Animated.View style={{ transform: [{ scale }] }}>
         <View style={[styles.clip, active ? styles.clipActive : styles.clipInactive]}>
           <BlurView
-            intensity={active ? 80 : 60}
-            tint="light"
+            intensity={active ? 25 : 18}
+            tint="dark"
             style={StyleSheet.absoluteFill}
           />
           <View style={[styles.overlay, active ? styles.overlayActive : styles.overlayInactive]} />
@@ -46,23 +46,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   clipActive: {
-    borderColor: colors.activePillBorder,
+    borderColor: colors.primary,
+    shadowColor: colors.accentIndigo,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
   },
   clipInactive: {
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: colors.cardBorder,
   },
   overlay: { ...StyleSheet.absoluteFillObject },
   overlayActive: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: colors.accentIndigo,
   },
   overlayInactive: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.surfaceContainerHigh,
   },
   inner: {
     paddingHorizontal: 18,
     paddingVertical: 9,
   },
   text: { fontSize: 14, fontWeight: '700' },
-  textActive:   { color: colors.blackText },
-  textInactive: { color: colors.white },
+  textActive:   { color: '#ffffff' },
+  textInactive: { color: colors.onSurfaceVariant },
 });

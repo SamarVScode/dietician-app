@@ -1,3 +1,16 @@
+/**
+ * DietScreen — Luminous Vitality / Glassmorphism + Material Expressive
+ *
+ * ### 🐝 Extended Swarm Active: Rebuilding DietScreen...
+ * - 🗺️ Product Mapper: FilterMode state drives activeDayPlan; completedMealIds tracks done meals for "Today" mode.
+ * - 📐 Layout Architect: Fixed header → pill filters + optional strips → ScrollView meal list with stagger.
+ * - 🎨 Design Systems: Active filter pill = solid indigo fill + glow; date bubbles use dark glass; meal kcal chip in teal.
+ * - 🧩 Component Engineer: FilterPill, DateItem, NutStatRow, MealCard all clean inner components.
+ * - ⚡ Perf-Tuner: FlatList for date strip with getItemLayout; Animated.spring for press scale (no JS thread).
+ * - ✨ Motion Designer: FilterPill spring scale on press 0.93; DateItem spring 0.9; AnimatedCard stagger on meal list.
+ * - 👁️‍🗨️ a11y Guru: DateItem 60px width ensures 44pt+; kcal chip has textual content; doneBadge has checkmark icon.
+ * #### 👑 Director's Verdict: Solid indigo active pill with glow, dark glass meal cards, teal kcal chip, green done badge.
+ */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -22,7 +35,6 @@ import {
   getTotalMacros,
   formatTime12h,
 } from '../services/dietPlanService';
-import { fireTestNotifications } from '../services/notificationService';
 import { fetchTodayMealLogs } from '../services/reportService';
 import type { DietPlan, DayPlan, Meal, FoodItem } from '../types';
 import { colors } from '../theme/colors';
@@ -48,29 +60,28 @@ function addDays(d: Date, n: number): Date { const c = new Date(d); c.setDate(c.
 function isSameDay(a: Date, b: Date) { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 function buildDateStrip(): Date[] { const today = startOfDay(new Date()); return Array.from({ length: 29 }, (_,i) => addDays(today, i-7)); }
 
-/* ─── Nutrition stat row ──────────────────────────────── */
+/* ─── Nutrition stat row ──────────────────────────────────────────────────── */
 function NutStatRow({ calories, protein, carbs, fats }: { calories: number; protein: number; carbs: number; fats: number }) {
   return (
     <View style={styles.nutRow}>
       <NutStat val={String(Math.round(calories))} unit="kcal" label="Calories" accent={colors.accentBlue} />
-      <NutStat val={String(Math.round(protein))} unit="g" label="Protein" accent={colors.accentGreen} />
-      <NutStat val={String(Math.round(carbs))} unit="g" label="Carbs" accent={colors.accentYellow} />
-      <NutStat val={String(Math.round(fats))} unit="g" label="Fats" accent={colors.accentPink} />
+      <NutStat val={String(Math.round(protein))}  unit="g"    label="Protein"  accent={colors.accentGreen} />
+      <NutStat val={String(Math.round(carbs))}    unit="g"    label="Carbs"    accent={colors.accentYellow} />
+      <NutStat val={String(Math.round(fats))}     unit="g"    label="Fats"     accent={colors.accentPink} />
     </View>
   );
 }
 
-/* ─── Meal card ──────────────────────────────────────── */
+/* ─── Meal card ───────────────────────────────────────────────────────────── */
 function MealCard({ meal, completed }: { meal: Meal; completed?: boolean }) {
   return (
     <FrostedCard style={styles.mealCard}>
-      {/* Header */}
       <View style={styles.mealHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.mealName}>{meal.name}</Text>
           {!!meal.time && (
             <View style={styles.mealTimeRow}>
-              <MaterialCommunityIcons name="clock-outline" size={12} color={colors.mutedText} />
+              <MaterialCommunityIcons name="clock-outline" size={12} color={colors.onSurfaceVariant} />
               <Text style={styles.mealTime}>{formatTime12h(meal.time)}</Text>
             </View>
           )}
@@ -88,7 +99,6 @@ function MealCard({ meal, completed }: { meal: Meal; completed?: boolean }) {
         </View>
       </View>
 
-      {/* Body: food rows + macro tags */}
       <View style={styles.mealBody}>
         <View style={styles.foodCol}>
           {meal.items.map((item: FoodItem, idx: number) => (
@@ -105,17 +115,17 @@ function MealCard({ meal, completed }: { meal: Meal; completed?: boolean }) {
   );
 }
 
-/* ─── Filter pill with BlurView + press feedback ────── */
+/* ─── Filter pill ─────────────────────────────────────────────────────────── */
 function FilterPill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const scale = React.useRef(new RNAnimated.Value(1)).current;
-  const pressIn = () => { RNAnimated.spring(scale, { toValue: 0.93, tension: 200, friction: 8, useNativeDriver: true }).start(); };
-  const pressOut = () => { RNAnimated.spring(scale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+  const pressIn  = () => { RNAnimated.spring(scale, { toValue: 0.93, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+  const pressOut = () => { RNAnimated.spring(scale, { toValue: 1,    tension: 200, friction: 8, useNativeDriver: true }).start(); };
 
   return (
     <TouchableOpacity onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1}>
       <RNAnimated.View style={{ transform: [{ scale }] }}>
         <View style={[styles.filterPillClip, active && styles.filterPillClipActive]}>
-          <BlurView intensity={active ? 80 : 60} tint="light" style={StyleSheet.absoluteFill} />
+          {!active && <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />}
           <View style={[styles.filterPillOverlay, active && styles.filterPillOverlayActive]} />
           <View style={styles.filterPillInner}>
             <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
@@ -126,12 +136,12 @@ function FilterPill({ label, active, onPress }: { label: string; active: boolean
   );
 }
 
-/* ─── Date strip item with BlurView + press feedback ── */
+/* ─── Date strip item ─────────────────────────────────────────────────────── */
 function DateItem({ date, selected, onPress }: { date: Date; selected: boolean; onPress: () => void }) {
   const isToday = isSameDay(date, startOfDay(new Date()));
   const scale = React.useRef(new RNAnimated.Value(1)).current;
-  const pressIn = () => { RNAnimated.spring(scale, { toValue: 0.9, tension: 200, friction: 8, useNativeDriver: true }).start(); };
-  const pressOut = () => { RNAnimated.spring(scale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+  const pressIn  = () => { RNAnimated.spring(scale, { toValue: 0.9, tension: 200, friction: 8, useNativeDriver: true }).start(); };
+  const pressOut = () => { RNAnimated.spring(scale, { toValue: 1,   tension: 200, friction: 8, useNativeDriver: true }).start(); };
 
   return (
     <TouchableOpacity style={styles.dateItem} onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1}>
@@ -140,7 +150,7 @@ function DateItem({ date, selected, onPress }: { date: Date; selected: boolean; 
           {isToday ? 'Today' : DAY_NAMES[date.getDay()]}
         </Text>
         <View style={[styles.dateBubbleClip, selected && styles.dateBubbleClipActive]}>
-          <BlurView intensity={selected ? 80 : 60} tint="light" style={StyleSheet.absoluteFill} />
+          {!selected && <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />}
           <View style={[styles.dateBubbleOverlay, selected && styles.dateBubbleOverlayActive]} />
           <Text style={[styles.dateNum, selected && styles.dateNumActive]}>{date.getDate()}</Text>
         </View>
@@ -152,14 +162,14 @@ function DateItem({ date, selected, onPress }: { date: Date; selected: boolean; 
   );
 }
 
-/* ─── Empty ──────────────────────────────────────────── */
+/* ─── Empty ───────────────────────────────────────────────────────────────── */
 function EmptyPlan() {
   return (
     <FrostedCard style={styles.emptyCard}>
       <View style={styles.emptyIconWrap}>
-        <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={styles.emptyIconOverlay} />
-        <MaterialCommunityIcons name="food-off-outline" size={40} color={colors.white} />
+        <MaterialCommunityIcons name="food-off-outline" size={40} color={colors.primary} />
       </View>
       <Text style={styles.emptyTitle}>No Diet Plan Yet</Text>
       <Text style={styles.emptySub}>Your dietician hasn't assigned a plan yet.{'\n'}Check back soon!</Text>
@@ -167,18 +177,17 @@ function EmptyPlan() {
   );
 }
 
-/* ─── Main screen ────────────────────────────────────── */
+/* ─── Main screen ─────────────────────────────────────────────────────────── */
 export default function DietScreen() {
   const { userProfile } = useAuthStore();
   const insets = useSafeAreaInsets();
 
-  const [plan, setPlan]               = useState<DietPlan | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [refreshing, setRefreshing]   = useState(false);
-  const [filterMode, setFilterMode]   = useState<FilterMode>('today');
-  const [testingNotifs, setTestingNotifs] = useState(false);
+  const [plan, setPlan]                   = useState<DietPlan | null>(null);
+  const [loading, setLoading]             = useState(true);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [filterMode, setFilterMode]       = useState<FilterMode>('today');
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
-  const [selectedDate, setSelectedDate]     = useState<Date>(startOfDay(new Date()));
+  const [selectedDate, setSelectedDate]   = useState<Date>(startOfDay(new Date()));
   const [completedMealIds, setCompletedMealIds] = useState<Set<string>>(new Set());
 
   const dateStrip    = buildDateStrip();
@@ -200,7 +209,6 @@ export default function DietScreen() {
   }, [userProfile?.id]);
 
   useEffect(() => { loadPlan(); }, [loadPlan]);
-
   const onRefresh = async () => { setRefreshing(true); await loadPlan(); setRefreshing(false); };
 
   useEffect(() => {
@@ -231,14 +239,9 @@ export default function DietScreen() {
 
   const isMultiDay = plan && plan.days.length > 1;
 
-  /* Header fade-in */
   const headerOpacity = useRef(new RNAnimated.Value(0)).current;
   useEffect(() => {
-    RNAnimated.timing(headerOpacity, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    RNAnimated.timing(headerOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, []);
 
   return (
@@ -247,11 +250,11 @@ export default function DietScreen() {
         <View style={styles.titleRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.pageTitle}>Diet Plan</Text>
-            {plan && <Text style={styles.pageSub}>{plan.templateName} {'\u00B7'} {plan.days.length} day{plan.days.length !== 1 ? 's' : ''}</Text>}
+            {plan && <Text style={styles.pageSub}>{plan.templateName} · {plan.days.length} day{plan.days.length !== 1 ? 's' : ''}</Text>}
           </View>
           {plan && activeDayPlan && (
             <View style={styles.badgeClip}>
-              <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+              <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
               <View style={styles.badgeOverlay} />
               <View style={styles.badgeInner}>
                 <Text style={styles.badgeText}>{filterLabel}</Text>
@@ -265,10 +268,10 @@ export default function DietScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.white} colors={[colors.white]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
       >
         {loading ? (
-          <ActivityIndicator style={styles.loader} color={colors.white} size="large" />
+          <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
         ) : !plan ? (
           <EmptyPlan />
         ) : (
@@ -281,40 +284,11 @@ export default function DietScreen() {
               <FilterPill label="Pick Date" active={filterMode === 'date'}   onPress={() => setFilterMode('date')} />
             </ScrollView>
 
-            {/* DEV: Notification test panel */}
-            <TouchableOpacity
-              activeOpacity={0.75}
-              disabled={testingNotifs}
-              onPress={async () => {
-                setTestingNotifs(true);
-                try { await fireTestNotifications(plan, userProfile!.id); } catch (e) { console.error(e); }
-                finally { setTestingNotifs(false); }
-              }}
-            >
-              <View style={styles.testNotifClip}>
-                <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
-                <View style={styles.testNotifOverlay} />
-                <View style={styles.testNotifInner}>
-                  <MaterialCommunityIcons name="bell-ring-outline" size={16} color={colors.gold} />
-                  <Text style={styles.testNotifText}>
-                    {testingNotifs
-                      ? 'Firing notifications\u2026'
-                      : `[DEV] Fire all notifications (${(plan.waterSchedule?.length ?? 0) + (plan.wakeUpTime ? 1 : 0) + (plan.sleepTime ? 1 : 0) + Math.min(3, getDayPlanForDate(plan, new Date()).meals.length)} total)`}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
             {/* Day selector strip */}
             {filterMode === 'day' && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subScroll} contentContainerStyle={styles.subScrollContent}>
                 {plan.days.map((d, idx) => (
-                  <DayPill
-                    key={idx}
-                    day={d.dayName}
-                    active={selectedDayIdx === idx}
-                    onPress={() => setSelectedDayIdx(idx)}
-                  />
+                  <DayPill key={idx} day={d.dayName} active={selectedDayIdx === idx} onPress={() => setSelectedDayIdx(idx)} />
                 ))}
               </ScrollView>
             )}
@@ -378,73 +352,69 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: spacing.screenPadding, paddingBottom: 110 },
   loader:        { marginTop: 60 },
 
-  /* Header area */
+  /* Header */
   headerArea: { paddingHorizontal: spacing.screenPadding, paddingBottom: 8 },
   titleRow:   { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  pageTitle:  { ...typography.sectionTitle, color: colors.white, fontSize: 24, fontWeight: '900' },
-  pageSub:    { ...typography.subLabelSm, color: colors.mutedText, marginTop: 2 },
-  badgeClip:    { borderRadius: radius.activePill, overflow: 'hidden', borderWidth: 1, borderColor: colors.activePillBorder },
-  badgeOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.activePillBg },
+  pageTitle:  { fontSize: 26, fontWeight: '900', color: colors.onSurface, letterSpacing: -0.8 },
+  pageSub:    { fontSize: 13, fontWeight: '500', color: colors.onSurfaceVariant, marginTop: 2 },
+
+  /* Active day badge */
+  badgeClip:    { borderRadius: radius.activePill, overflow: 'hidden', borderWidth: 1, borderColor: colors.cardBorder },
+  badgeOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.surfaceContainerHigh },
   badgeInner:   { paddingHorizontal: 12, paddingVertical: 5 },
-  badgeText:    { fontSize: 12, fontWeight: '700', color: colors.blackText },
+  badgeText:    { fontSize: 12, fontWeight: '700', color: colors.primary },
 
   /* Nut stat row */
   nutRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
 
   /* Filter pills */
-  filterScroll:              { marginBottom: 8 },
-  filterContent:             { gap: 8, paddingVertical: 4 },
-  filterPillClip:            { borderRadius: 50, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  filterPillClipActive:      { borderColor: colors.activePillBorder },
-  filterPillOverlay:         { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
-  filterPillOverlayActive:   { backgroundColor: 'rgba(255,255,255,0.15)' },
-  filterPillInner:           { paddingHorizontal: 16, paddingVertical: 9 },
-  filterPillText:            { fontSize: 13, fontWeight: '700', color: colors.white },
-  filterPillTextActive:      { color: colors.blackText },
+  filterScroll:            { marginBottom: 8 },
+  filterContent:           { gap: 8, paddingVertical: 4 },
+  filterPillClip:          { borderRadius: 999, overflow: 'hidden', borderWidth: 1, borderColor: colors.cardBorder },
+  filterPillClipActive:    { borderColor: colors.accentIndigo, shadowColor: colors.accentIndigoLight, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8 },
+  filterPillOverlay:       { ...StyleSheet.absoluteFillObject, backgroundColor: colors.surfaceContainerHigh },
+  filterPillOverlayActive: { backgroundColor: colors.accentIndigo },
+  filterPillInner:         { paddingHorizontal: 16, paddingVertical: 9 },
+  filterPillText:          { fontSize: 13, fontWeight: '700', color: colors.onSurfaceVariant },
+  filterPillTextActive:    { color: '#ffffff' },
 
   /* Day chips / date strip */
   subScroll:        { marginBottom: 12, marginTop: 4 },
   subScrollContent: { paddingVertical: 4 },
 
   /* Date strip */
-  dateStripContent: { paddingHorizontal: 4, gap: 2 },
-  dateItem:         { width: 60, alignItems: 'center', paddingVertical: 4 },
-  dateWeekDay:      { fontSize: 10, fontWeight: '600', color: colors.mutedText, marginBottom: 4 },
-  dateBubbleClip:          { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)' },
-  dateBubbleClipActive:    { borderColor: colors.activePillBorder },
-  dateBubbleOverlay:       { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
-  dateBubbleOverlayActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
-  dateNum:          { fontSize: 16, fontWeight: '700', color: colors.white },
-  dateNumActive:    { color: colors.blackText },
-  dateMon:          { fontSize: 10, fontWeight: '500', color: colors.mutedText, marginTop: 4 },
-  dateActive:       { color: colors.white, fontWeight: '700' },
+  dateStripContent:        { paddingHorizontal: 4, gap: 2 },
+  dateItem:                { width: 60, alignItems: 'center', paddingVertical: 4 },
+  dateWeekDay:             { fontSize: 10, fontWeight: '600', color: colors.onSurfaceVariant, marginBottom: 4 },
+  dateBubbleClip:          { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: 1.5, borderColor: colors.cardBorder },
+  dateBubbleClipActive:    { borderColor: colors.primary },
+  dateBubbleOverlay:       { ...StyleSheet.absoluteFillObject, backgroundColor: colors.surfaceContainerHigh },
+  dateBubbleOverlayActive: { backgroundColor: colors.accentIndigo },
+  dateNum:                 { fontSize: 15, fontWeight: '700', color: colors.onSurface },
+  dateNumActive:           { color: '#ffffff' },
+  dateMon:                 { fontSize: 9, fontWeight: '500', color: colors.onSurfaceVariant, marginTop: 4 },
+  dateActive:              { color: colors.onSurface, fontWeight: '700' },
 
   /* Meal card */
   mealCard:     { marginBottom: 10 },
   mealHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  mealName:     { fontSize: 16, fontWeight: '600', color: colors.white, letterSpacing: -0.2 },
+  mealName:     { fontSize: 17, fontWeight: '700', color: colors.onSurface, letterSpacing: -0.2 },
   mealTimeRow:  { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  mealTime:     { fontSize: 12, fontWeight: '500', color: colors.mutedText },
+  mealTime:     { fontSize: 12, fontWeight: '500', color: colors.onSurfaceVariant },
   mealBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-  doneBadge:    { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.proteinBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 50 },
+  doneBadge:    { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.proteinBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, borderWidth: 1, borderColor: colors.proteinBorder },
   doneBadgeText:{ fontSize: 11, fontWeight: '700', color: colors.proteinText },
-  kcalChip:     { backgroundColor: 'rgba(125,212,248,0.2)', borderRadius: radius.kcalBadge, paddingHorizontal: 10, paddingVertical: 4 },
+  kcalChip:     { backgroundColor: 'rgba(136,255,239,0.12)', borderRadius: radius.kcalBadge, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(136,255,239,0.2)' },
   kcalText:     { fontSize: 13, fontWeight: '700', color: colors.mealKcal },
   mealBody:     { flexDirection: 'row', gap: 12 },
   foodCol:      { flex: 1 },
-  notesText:    { fontSize: 13, fontWeight: '400', color: colors.mutedText, fontStyle: 'italic', marginTop: 10 },
-
-  /* DEV: test notification button */
-  testNotifClip:    { borderRadius: radius.card, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', marginBottom: 12 },
-  testNotifOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
-  testNotifInner:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
-  testNotifText:    { flex: 1, fontSize: 12, fontWeight: '700', color: colors.mutedText },
+  notesText:    { fontSize: 13, fontWeight: '400', color: colors.onSurfaceVariant, fontStyle: 'italic', marginTop: 10 },
 
   /* Empty */
-  emptyCard:    { alignItems: 'center', marginTop: 24 },
+  emptyCard:        { alignItems: 'center', marginTop: 24 },
   emptyIconWrap:    { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
-  emptyIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.08)' },
-  emptyTitle:   { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 8 },
-  emptySub:     { fontSize: 14, fontWeight: '400', color: colors.mutedText, textAlign: 'center', lineHeight: 22 },
-  noMealsText:  { color: colors.mutedText, textAlign: 'center' },
+  emptyIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(27,21,83,0.7)' },
+  emptyTitle:       { fontSize: 20, fontWeight: '700', color: colors.onSurface, marginBottom: 8 },
+  emptySub:         { fontSize: 14, fontWeight: '400', color: colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22 },
+  noMealsText:      { color: colors.onSurfaceVariant, textAlign: 'center' },
 });

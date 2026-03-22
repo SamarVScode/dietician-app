@@ -1,0 +1,46 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Frosted Glass Filter -->
+    <filter id="frost" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="20" result="blur" />
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.4 0" result="softBlur" />
+    </filter>
+    
+    <!-- Bioluminescent Glow Filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="15" result="blur" />
+      <feFlood flood-color="#00A3FF" result="color" />
+      <feComposite in="color" in2="blur" operator="in" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Main Pulse Gradient -->
+    <linearGradient id="pulse_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#98CBFF" />
+      <stop offset="50%" stop-color="#00A3FF" />
+      <stop offset="100%" stop-color="#3619D4" />
+    </linearGradient>
+  </defs>
+
+  <!-- Deep Blue Base Background (Adaptive Icon Safe Zone) -->
+  <rect width="1024" height="1024" rx="240" fill="#0E141A" />
+  
+  <!-- The "Frosted" Surface -->
+  <rect x="128" y="128" width="768" height="768" rx="180" fill="white" fill-opacity="0.05" />
+  <rect x="128" y="128" width="768" height="768" rx="180" stroke="white" stroke-opacity="0.1" stroke-width="2" />
+
+  <!-- Centered Pulse Icon (Scaled from 600px to fit 1024px) -->
+  <g transform="translate(262, 262) scale(0.83)">
+    <!-- Shadow for Depth -->
+    <path d="M100 315 H180 L230 115 L320 515 L390 255 L440 315 H500" fill="none" stroke="black" stroke-opacity="0.3" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" transform="translate(4, 12)" />
+    
+    <!-- Luminous Core -->
+    <path filter="url(#glow)" d="M100 300 H180 L230 100 L320 500 L390 240 L440 300 H500" fill="none" stroke="url(#pulse_grad)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Glass Highlight (Specular) -->
+    <path d="M100 300 H180 L230 100 L320 500 L390 240 L440 300 H500" fill="none" stroke="white" stroke-opacity="0.25" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" transform="translate(0, -6)" />
+  </g>
+</svg>

@@ -2,54 +2,57 @@ import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { colors } from '../theme/colors';
-import { radius, spacing } from '../theme/spacing';
+
+interface FrostedCardProps {
+  children: React.ReactNode;
+  style?: ViewStyle;
+  noPadding?: boolean;
+  overlayColor?: string;
+  borderColor?: string;
+  blurIntensity?: number;
+}
 
 export function FrostedCard({
   children,
   style,
   noPadding,
-}: {
-  children: React.ReactNode;
-  style?: ViewStyle;
-  noPadding?: boolean;
-}) {
+  overlayColor,
+  borderColor,
+  blurIntensity = 28,
+}: FrostedCardProps) {
   return (
-    <View style={[styles.outer, style]}>
-      <View style={styles.clip}>
-        <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={styles.overlay} />
-        {noPadding ? (
-          <>{children}</>
-        ) : (
-          <View style={styles.content}>{children}</View>
-        )}
-      </View>
+    <View style={[styles.clip, borderColor ? { borderColor } : null, style]}>
+      <BlurView intensity={blurIntensity} tint="dark" style={StyleSheet.absoluteFill} />
+      <View
+        style={[
+          styles.overlay,
+          overlayColor ? { backgroundColor: overlayColor } : null,
+        ]}
+      />
+      <View style={noPadding ? null : styles.inner}>{children}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  outer: {
-    borderRadius: radius.card,
-    // Shadow outside the clip
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-  },
   clip: {
-    borderRadius: radius.card,
+    borderRadius: 20,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    overflow: 'hidden',
+    // bioluminescent shadow
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 32,
+    elevation: 12,
+    marginBottom: 12,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.cardBg,
   },
-  content: {
-    paddingHorizontal: spacing.cardPadding,
-    paddingVertical: 16,
+  inner: {
+    padding: 18,
   },
 });

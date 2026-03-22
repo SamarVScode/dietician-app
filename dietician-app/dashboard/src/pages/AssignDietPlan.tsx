@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { showToast } from '../utils/toast'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -10,8 +11,10 @@ import { formatTime12h } from '../components/dietplan/mealUtils'
 import PageWrapper from '../components/layout/PageWrapper'
 import {
   ArrowLeft, Check, ChevronDown, ChevronUp,
-  AlertTriangle, Utensils, BookOpen, Clock, Flame, Plus,
+  AlertTriangle, Utensils, BookOpen, Clock, Flame, Plus, Droplets,
 } from 'lucide-react'
+import { generateWaterSchedule } from '../components/dietplan/mealUtils'
+import type { WaterSlot } from '../components/dietplan/mealUtils'
 
 interface UserData {
   id: string
@@ -59,6 +62,11 @@ interface Template {
   targetGoal: string
   days: DayPlan[]
   createdAt: string
+  wakeUpTime?: string
+  sleepTime?: string
+  waterIntakeMl?: number
+  tips?: string
+  waterSchedule?: WaterSlot[]
 }
 
 const goalColors: Record<string, { bg: string; color: string; border: string }> = {
@@ -121,11 +129,24 @@ export default function AssignDietPlan() {
     try {
       const days = buildDays(selectedPlan)
 
-      // ✅ Fixed: correct collection name + status field
+      // Use stored waterSchedule or recompute if missing (backward-compat)
+      const waterSchedule = selectedPlan.waterSchedule?.length
+        ? selectedPlan.waterSchedule
+        : generateWaterSchedule(
+            selectedPlan.wakeUpTime ?? '06:00',
+            selectedPlan.sleepTime ?? '22:00',
+            selectedPlan.waterIntakeMl ?? 0,
+          )
+
       await addDoc(collection(db, 'users', id!, 'dietPlans'), {
         templateId: selectedPlan.id,
         templateName: selectedPlan.name,
         days,
+        wakeUpTime: selectedPlan.wakeUpTime ?? '06:00',
+        sleepTime: selectedPlan.sleepTime ?? '22:00',
+        waterIntakeMl: selectedPlan.waterIntakeMl ?? 0,
+        tips: selectedPlan.tips ?? '',
+        waterSchedule,
         assignedAt: new Date().toISOString(),
         assignedBy: 'admin',
         status: 'active',
@@ -137,8 +158,10 @@ export default function AssignDietPlan() {
       })
 
       setAssigned(true)
+      showToast.planAssigned()
     } catch (e) {
       console.error(e)
+      showToast.error('Failed to assign plan')
     } finally {
       setIsAssigning(false)
     }

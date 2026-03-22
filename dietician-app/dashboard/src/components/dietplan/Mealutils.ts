@@ -29,12 +29,21 @@ export interface DayPlan {
   meals: Meal[]
 }
 
+export interface WaterSlot {
+  time: string      // "HH:MM" — time to send notification
+  amountMl: number  // ml to drink at this hour
+}
+
 export interface TemplateFormData {
   name: string
   description: string
   targetGoal: string
   duration: number
   days: DayPlan[]
+  wakeUpTime: string    // "HH:MM"
+  sleepTime: string     // "HH:MM"
+  waterIntakeMl: number // daily total in ml
+  tips: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -85,7 +94,37 @@ export const emptyTemplateForm = (duration = 7): TemplateFormData => ({
     dayName,
     meals: [emptyMeal()],
   })),
+  wakeUpTime: '06:00',
+  sleepTime: '22:00',
+  waterIntakeMl: 2000,
+  tips: '',
 })
+
+/**
+ * Generates an hourly water reminder schedule between wakeUpTime and sleepTime.
+ * Returns an array of { time, amountMl } objects — one per hour — for Firebase.
+ */
+export function generateWaterSchedule(
+  wakeUpTime: string,
+  sleepTime: string,
+  totalMl: number,
+): WaterSlot[] {
+  if (!wakeUpTime || !sleepTime || !totalMl || totalMl <= 0) return []
+  const [wh, wm = 0] = wakeUpTime.split(':').map(Number)
+  const [sh, sm = 0] = sleepTime.split(':').map(Number)
+  const wakeMin = wh * 60 + wm
+  const sleepMin = sh * 60 + sm
+  if (sleepMin <= wakeMin) return []
+  const slots: string[] = []
+  for (let cur = wakeMin; cur < sleepMin; cur += 60) {
+    const h = Math.floor(cur / 60)
+    const m = cur % 60
+    slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  }
+  if (slots.length === 0) return []
+  const mlPerSlot = Math.round(totalMl / slots.length)
+  return slots.map((time) => ({ time, amountMl: mlPerSlot }))
+}
 
 export function sumFoodItemMacros(items: FoodItem[]) {
   return items.reduce(

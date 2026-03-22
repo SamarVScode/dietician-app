@@ -31,7 +31,7 @@ dashboard/
     components/
       layout/                # PageWrapper, Header, Sidebar, ProtectedRoute
       dietplan/              # MealBuilder, TemplateForm, mealUtils, AIPlanGenerator, etc.
-        mealUtils.ts         # Shared types (Meal, FoodItem, DayPlan), helpers, formatTime12h
+        mealUtils.ts         # Shared types (Meal, FoodItem, DayPlan, TemplateFormData, WaterSlot), helpers, formatTime12h, generateWaterSchedule
         MealBuilder.tsx      # Visual meal editor with time picker, food items, macros
         TemplateForm.tsx     # Template editor with duration-aware day tabs
         aiService.ts         # OpenRouter AI integration for food macro lookup
@@ -221,6 +221,19 @@ users/
     }
   ]
 
+  // ── Water & Wellness ───────────────────────────────────────────
+  wakeUpTime:    string          // "HH:MM", e.g. "06:00"
+  sleepTime:     string          // "HH:MM", e.g. "22:00"
+  waterIntakeMl: number          // daily total in ml, e.g. 2000
+  tips:          string          // dietician notes for the patient
+
+  waterSchedule: [               // one slot per hour between wakeUpTime and sleepTime
+    {
+      time:      string          // "HH:MM" — time to trigger notification, e.g. "06:00"
+      amountMl:  number          // ml to drink at this hour, e.g. 125
+    }
+  ]
+
   assignedAt:  string            // ISO 8601 timestamp
   assignedBy:  string            // "admin"
   status:      string            // "active"
@@ -275,8 +288,21 @@ templates/
     }
   ]
 
-  createdAt:  string     // ISO 8601
-  updatedAt:  string     // ISO 8601
+  // ── Water & Wellness ──────────────────────────────────────────
+  wakeUpTime:    string    // "HH:MM", e.g. "06:00"
+  sleepTime:     string    // "HH:MM", e.g. "22:00"
+  waterIntakeMl: number    // daily total in ml, e.g. 2000
+  tips:          string    // dietician notes shown to the patient
+
+  waterSchedule: [         // computed on save; one slot per hour between wakeUpTime and sleepTime
+    {
+      time:     string     // "HH:MM" — used by mobile app to schedule water notifications
+      amountMl: number     // ml per hour, e.g. 125
+    }
+  ]
+
+  createdAt:  string       // ISO 8601
+  updatedAt:  string       // ISO 8601
 }
 ```
 
@@ -379,7 +405,7 @@ Patient credentials are stored in plain text in the `users` Firestore document s
 - **Duration picker** — when creating a template, the admin first picks a duration: Weekly (7 days), 15 Days, or Monthly (30 days).
 - Each template has independent day entries, each with its own meals array.
 - The dietician edits each day via scrollable day tabs — no base-meals/override layers.
-- **Meal time** — each meal has a proper time picker (`<input type="time">`) stored in 24h format (e.g. `"08:00"`, `"13:30"`), displayed as 12h (e.g. `8:00 AM`). Used for future notification scheduling.
+- **Meal time** — each meal has a proper time picker (`<input type="time">`) stored in 24h format (e.g. `"08:00"`, `"13:30"`), displayed as 12h (e.g. `8:00 AM`). Used for notification scheduling.
 - **AI macro enrichment** — on save, all food items without macros are auto-enriched via OpenRouter API. Macros are cached in Firestore `foods` collection. Meal-level macros are auto-summed from food items.
 - **Copy helpers:**
   - "Apply to all days" — copies current day's meals to all days.
@@ -387,6 +413,25 @@ Patient credentials are stored in plain text in the `users` Firestore document s
   - Per-meal "Copy to days" — appends a single meal to any chosen subset of days.
 - Template cards show meals/day, kcal/day, and target goal.
 - Delete button on each template card opens a confirmation modal.
+
+### Template Info fields (Section 1 of TemplateForm)
+
+In addition to name, description, and target goal, the dietician sets the following **once per template** (not per meal):
+
+| Field | Input | Stored as |
+|---|---|---|
+| **Wake Up Time** | `<input type="time">` | `wakeUpTime: string` ("HH:MM") |
+| **Sleep Time** | `<input type="time">` | `sleepTime: string` ("HH:MM") |
+| **Daily Water Intake** | Number input in litres (e.g. `2.0`) | `waterIntakeMl: number` (ml, e.g. `2000`) |
+| **Tips / Notes** | Textarea | `tips: string` |
+
+On save, `generateWaterSchedule(wakeUpTime, sleepTime, waterIntakeMl)` produces an array of hourly reminder slots (one per hour between wakeup and sleep) stored as `waterSchedule` in Firebase. The mobile app reads this array to schedule local push notifications prompting the patient to drink water.
+
+**Example** — wake `06:00`, sleep `22:00`, intake `1 L`:
+- 16 hourly slots → `06:00`, `07:00`, … `21:00`
+- Each slot: `{ time: "06:00", amountMl: 63 }`
+
+A live preview is shown in the form: *"16 reminders · 63 ml/hr (6:00 AM – 9:00 PM)"*
 
 ---
 
@@ -472,6 +517,8 @@ npm run preview   # preview production build locally
 - Body composition data — entry on create form, display and edit on profile
 - Diet plan — assign from template, build custom plan (7/15/30 days), edit active plan, remove plan
 - Diet plan templates — full CRUD with duration picker (7/15/30 days), day editor, and copy helpers
+- Water intake scheduling — dietician sets wake/sleep times and daily water target (litres) once per template; `generateWaterSchedule` computes hourly reminder slots stored in Firebase for mobile notifications
+- Tips/notes per plan — free-text field on each template, copied to the patient's diet plan on assignment
 - AI macro auto-detection — food item macros fetched via OpenRouter API on save, cached in Firestore `foods` collection
 - Proper time picker for meal times (24h storage, 12h display)
 - Settings — manage custom dropdown options

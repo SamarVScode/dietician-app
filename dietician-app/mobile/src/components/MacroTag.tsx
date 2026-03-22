@@ -1,49 +1,67 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
-import { radius } from '../theme/spacing';
 
-type MacroType = 'p' | 'c' | 'f';
-
-const MACRO_CONFIG: Record<MacroType, { bg: string; text: string; border: string; prefix: string }> = {
-  p: { bg: colors.proteinBg, text: colors.proteinText, border: colors.proteinBorder, prefix: 'P' },
-  c: { bg: colors.carbBg, text: colors.carbText, border: colors.carbBorder, prefix: 'C' },
-  f: { bg: colors.fatBg, text: colors.fatText, border: colors.fatBorder, prefix: 'F' },
-};
-
-export function MacroTag({ type, value }: { type: MacroType; value: number }) {
-  const cfg = MACRO_CONFIG[type];
+export function MacroTagColumn({
+  protein,
+  carbs,
+  fats,
+}: {
+  protein: number;
+  carbs: number;
+  fats: number;
+}) {
   return (
-    <View style={[styles.tag, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-      <Text style={[styles.text, { color: cfg.text }]}>
-        {cfg.prefix} {'\u00B7'} {Math.round(value)}g
-      </Text>
+    <View style={styles.col}>
+      <MacroPill label="P" value={`${Math.round(protein)}g`} bg={colors.proteinBg} text={colors.proteinText} border={colors.proteinBorder} />
+      <MacroPill label="C" value={`${Math.round(carbs)}g`}  bg={colors.carbBg}    text={colors.carbText}    border={colors.carbBorder} />
+      <MacroPill label="F" value={`${Math.round(fats)}g`}   bg={colors.fatBg}     text={colors.fatText}     border={colors.fatBorder} />
     </View>
   );
 }
 
-export function MacroTagColumn({ protein, carbs, fats }: { protein: number; carbs: number; fats: number }) {
+function MacroPill({
+  label,
+  value,
+  bg,
+  text,
+  border,
+}: {
+  label: string;
+  value: string;
+  bg: string;
+  text: string;
+  border: string;
+}) {
   return (
-    <View style={styles.column}>
-      <MacroTag type="p" value={protein} />
-      <MacroTag type="c" value={carbs} />
-      <MacroTag type="f" value={fats} />
+    <View style={[styles.pill, { backgroundColor: bg, borderColor: border }]}>
+      <Text style={[styles.pillLabel, { color: text }]}>{label}</Text>
+      <Text style={[styles.pillValue, { color: text }]}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  tag: {
-    borderRadius: radius.macroTag,
-    borderWidth: 1,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+  col: {
+    gap: 5,
+    flexShrink: 0,
   },
-  text: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  column: {
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  pillLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  pillValue: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

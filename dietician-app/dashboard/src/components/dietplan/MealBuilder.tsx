@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Plus, X, Clock, Flame, ChevronDown, ChevronUp, Copy } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Plus, X, Clock, Flame, ChevronDown, ChevronUp, Copy, Loader } from 'lucide-react'
 import { emptyMeal, mealInputStyle, mealLabelStyle, sumFoodItemMacros, formatTime12h } from './mealUtils'
 import type { Meal, FoodItem } from './mealUtils'
+import { fetchFoodMacros } from '../../services/aiService'
 
 export function MealBuilder({
   meals,
@@ -20,6 +21,11 @@ export function MealBuilder({
   const [expandedMeal, setExpandedMeal] = useState<string | null>(meals[0]?.id ?? null)
   const [copyingMealId, setCopyingMealId] = useState<string | null>(null)
   const [selectedCopyDays, setSelectedCopyDays] = useState<number[]>([])
+  const [fetchingItems, setFetchingItems] = useState<Set<string>>(new Set())
+
+  // Keep a ref so async fetchItemMacros always reads the latest meals, not a stale closure
+  const mealsRef = useRef(meals)
+  mealsRef.current = meals
 
   const addMeal = () => {
     const m = emptyMeal()
@@ -58,6 +64,27 @@ export function MealBuilder({
     onCopyMealToDays(meal, selectedCopyDays)
     setCopyingMealId(null)
     setSelectedCopyDays([])
+  }
+
+  const fetchItemMacros = async (mealId: string, itemIdx: number, foodName: string) => {
+    if (!foodName.trim()) return
+    const key = `${mealId}-${itemIdx}`
+    setFetchingItems((prev) => new Set([...prev, key]))
+    try {
+      const macros = await fetchFoodMacros(foodName)
+      if (macros) {
+        onChange(mealsRef.current.map((m) => {
+          if (m.id !== mealId) return m
+          const updatedItems = m.items.map((item, i) => i === itemIdx ? { ...item, ...macros } : item)
+          const sums = sumFoodItemMacros(updatedItems)
+          return { ...m, items: updatedItems, ...sums }
+        }))
+      }
+    } catch (err) {
+      console.error('Failed to fetch macros for:', foodName, err)
+    } finally {
+      setFetchingItems((prev) => { const next = new Set(prev); next.delete(key); return next })
+    }
   }
 
   const openCopyPanel = (e: React.MouseEvent, mealId: string) => {
@@ -184,20 +211,35 @@ export function MealBuilder({
               <div>
                 <label style={mealLabelStyle}>Food Items</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {meal.items.map((item, idx) => (
+                  {meal.items.map((item, idx) => {
+                    const itemKey = `${meal.id}-${idx}`
+                    const isFetchingMacros = fetchingItems.has(itemKey)
+                    const hasMacros = (item.calories ?? 0) > 0 || (item.protein ?? 0) > 0 || (item.carbs ?? 0) > 0 || (item.fats ?? 0) > 0
+                    return (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: '#8a9bc4', flexShrink: 0 }}>{idx + 1}</div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <input style={{ ...mealInputStyle }} value={item.name} placeholder={`Food item ${idx + 1}`}
                           onChange={(e) => updateFoodItem(meal.id, idx, { name: e.target.value })}
                           onFocus={(e) => { e.target.style.border = '1.5px solid #1a73e8'; e.target.style.background = '#fafcff' }}
-                          onBlur={(e) => { e.target.style.border = '1.5px solid #e8eef8'; e.target.style.background = '#f8fafd' }}
+                          onBlur={(e) => {
+                            e.target.style.border = '1.5px solid #e8eef8'
+                            e.target.style.background = '#f8fafd'
+                            if (e.target.value.trim() && !hasMacros && !isFetchingMacros) {
+                              fetchItemMacros(meal.id, idx, e.target.value)
+                            }
+                          }}
                         />
-                        {item.calories != null && item.calories > 0 && (
-                          <div style={{ fontSize: '10px', fontWeight: '600', color: '#8a9bc4', paddingLeft: '4px' }}>
-                            {item.calories}kcal · {item.protein ?? 0}g P · {item.carbs ?? 0}g C · {item.fats ?? 0}g F
+                        {isFetchingMacros ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '4px' }}>
+                            <Loader size={9} color="#b0bdd8" style={{ animation: 'spin 1s linear infinite' }} />
+                            <span style={{ fontSize: '10px', color: '#b0bdd8', fontStyle: 'italic' }}>fetching macros...</span>
                           </div>
-                        )}
+                        ) : hasMacros ? (
+                          <div style={{ fontSize: '10px', fontWeight: '600', color: '#8a9bc4', paddingLeft: '4px' }}>
+                            {item.calories ?? 0} kcal · {item.protein ?? 0}g protein · {item.carbs ?? 0}g carbs · {item.fats ?? 0}g fats
+                          </div>
+                        ) : null}
                       </div>
                       {meal.items.length > 1 && (
                         <button onClick={() => removeFoodItem(meal.id, idx)}
@@ -206,7 +248,8 @@ export function MealBuilder({
                         </button>
                       )}
                     </div>
-                  ))}
+                  )
+                  })}
                   <button onClick={() => addFoodItem(meal.id)}
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', background: '#f8fafd', border: '1.5px dashed #dbe8ff', color: '#1a73e8', fontSize: '12px', fontWeight: '600', cursor: 'pointer', width: 'fit-content', marginTop: '2px' }}>
                     <Plus size={13} /> Add Food Item

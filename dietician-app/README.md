@@ -45,6 +45,8 @@ dietician-app/
 | **Diet Plan Templates** | Create reusable templates with 7/15/30-day duration options |
 | **Meal Builder** | Visual meal builder with food items, time picker, macro inputs, and copy-to-days |
 | **AI Macro Detection** | Auto-fetch calories/protein/carbs/fats per food item via OpenRouter API on save; cached in Firestore `foods` collection |
+| **Water Intake Scheduling** | Dietician sets daily water intake (litres), wake-up time, and sleep time once per template; system computes hourly water reminder slots stored in Firebase for mobile notification delivery |
+| **Tips / Notes** | Free-text field on each template passed to the patient's assigned plan |
 | **Assign Diet Plans** | Assign templates or custom plans to patients with allergen warnings |
 | **Custom Plans** | Create one-off plans directly on a patient's profile |
 | **Reports** | Patient progress tracking with charts |
@@ -109,11 +111,15 @@ users/{userId}
   └── dietPlans/{planId}
         ├── templateId, templateName
         ├── days: [{ day, dayName, meals: [...], isOverride }]
-        ├── assignedAt, assignedBy, status
+        ├── wakeUpTime, sleepTime, waterIntakeMl, tips
+        ├── waterSchedule: [{ time: "HH:MM", amountMl: number }, ...]
+        └── assignedAt, assignedBy, status
 
 templates/{templateId}
   ├── name, description, targetGoal, duration
   ├── days: [{ dayIndex, dayName, meals: [...] }]
+  ├── wakeUpTime, sleepTime, waterIntakeMl, tips
+  ├── waterSchedule: [{ time: "HH:MM", amountMl: number }, ...]
   └── createdAt, updatedAt
 
 foods/{foodId}  (AI macro cache)

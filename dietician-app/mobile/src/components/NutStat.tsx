@@ -1,143 +1,74 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { colors } from '../theme/colors';
 
-/**
- * NutStat — rectangular frosted tile (used in DietScreen)
- */
-export function NutStat({
-  val,
-  unit,
-  label,
-  accent,
-}: {
+interface NutStatProps {
   val: string;
   unit: string;
   label: string;
   accent: string;
-}) {
+}
+
+export function NutStat({ val, unit, label, accent }: NutStatProps) {
   return (
-    <View style={styles.container}>
-      <View style={styles.clip}>
-        <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={styles.overlay} />
-        <View style={styles.inner}>
-          <View style={[styles.bar, { backgroundColor: accent }]} />
-          <Text style={styles.val}>{val}</Text>
-          <Text style={styles.unit}>{unit}</Text>
-          <Text style={styles.label}>{label}</Text>
-        </View>
+    <View style={styles.tile}>
+      <View style={[styles.accentBar, { backgroundColor: accent }]} />
+      <View style={styles.valueRow}>
+        <Text style={styles.val}>{val}</Text>
+        <Text style={[styles.unit, { color: accent }]}>{unit}</Text>
       </View>
+      <Text style={styles.label}>{label}</Text>
     </View>
   );
 }
 
-/**
- * NutCircle — circular stat bubble (used in HomeScreen)
- * Shows: "333" then "Calories" underneath — no unit line.
- * For non-calorie stats: "8g" then "Protein".
- */
-export function NutCircle({
-  val,
-  label,
-  accent,
-  bgTint,
-}: {
-  val: string;
-  label: string;
-  accent: string;
-  bgTint: string;
-}) {
-  return (
-    <View style={[circleStyles.shadow, { shadowColor: accent }]}>
-      <View style={[circleStyles.outer, { backgroundColor: bgTint }]}>
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={circleStyles.overlayTint} />
-        <View style={circleStyles.inner}>
-          <Text style={circleStyles.val}>{val}</Text>
-          <Text style={circleStyles.label}>{label}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/* ─── Rectangular tile styles ─────────────────────────── */
 const styles = StyleSheet.create({
-  container: {
+  tile: {
     flex: 1,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  clip: {
+    backgroundColor: colors.nutTileBg,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.cardBg,
-  },
-  inner: {
+    borderColor: colors.nutTileBorder,
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 6,
-  },
-  bar: {
-    width: 20, height: 3, borderRadius: 2, marginBottom: 8,
-  },
-  val: {
-    fontSize: 17, fontWeight: '900', color: colors.white,
-  },
-  unit: {
-    fontSize: 9, fontWeight: '700', color: colors.white, marginTop: 1,
-  },
-  label: {
-    fontSize: 9, fontWeight: '700', color: colors.mutedText,
-    textTransform: 'uppercase', marginTop: 3,
-  },
-});
-
-/* ─── Circle styles ───────────────────────────────────── */
-const CIRCLE_SIZE = 76;
-
-const circleStyles = StyleSheet.create({
-  shadow: {
+    paddingHorizontal: 4,
+    gap: 2,
+    // bioluminescent shadow
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 6,
   },
-  outer: {
-    width: CIRCLE_SIZE,
-    height: CIRCLE_SIZE,
-    borderRadius: CIRCLE_SIZE / 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
+  accentBar: {
+    width: 22,
+    height: 3,
+    borderRadius: 2,
+    marginBottom: 6,
   },
-  overlayTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  inner: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
   },
   val: {
-    fontSize: 17, fontWeight: '900', color: colors.white,
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.onSurface,
     letterSpacing: -0.5,
   },
+  unit: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
   label: {
-    fontSize: 8, fontWeight: '700', color: colors.white,
-    textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 2,
   },
 });

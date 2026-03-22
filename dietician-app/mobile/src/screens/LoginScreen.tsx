@@ -1,3 +1,16 @@
+/**
+ * LoginScreen — Luminous Vitality / Glassmorphism + Material Expressive
+ *
+ * ### 🐝 Extended Swarm Active: Rebuilding LoginScreen...
+ * - 🗺️ Product Mapper: Two states — idle sheet / loading — auth via signIn, errors surfaced inline.
+ * - 📐 Layout Architect: AppBackground → fixed top brand (flex 0) → KeyboardAvoidingView flex:1 → animated sheet flex:1.
+ * - 🎨 Design Systems: Midnight #0b082d gradient; teal (#b3fff3) border on focus; white text on dark sheet overlay.
+ * - 🧩 Component Engineer: FrostedField as self-contained inner component; GradientButton reused for CTA.
+ * - ⚡ Perf-Tuner: All mount animations use useNativeDriver; single Animated.parallel call.
+ * - ✨ Motion Designer: Brand spring-slides in (translateY -20→0), sheet spring-rises (40→0) after 150ms delay.
+ * - 👁️‍🗨️ a11y Guru: 52px field touch targets; hitSlop on eye button; autoComplete set for credential managers.
+ * #### 👑 Director's Verdict: Full-width teal gradient CTA button, luminous focus border, dark frosted sheet.
+ */
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -19,12 +32,18 @@ import { GradientButton } from '../components/GradientButton';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/spacing';
 
-/* Small frosted input wrapper — BlurView inside each field */
-function FrostedField({ children, focused }: { children: React.ReactNode; focused: boolean }) {
+/* ─── Frosted field ────────────────────────────────────────────────────────── */
+function FrostedField({
+  children,
+  focused,
+}: {
+  children: React.ReactNode;
+  focused: boolean;
+}) {
   return (
     <View style={[fieldStyles.outer, focused && fieldStyles.outerFocused]}>
       <View style={[fieldStyles.clip, focused && fieldStyles.clipFocused]}>
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[fieldStyles.overlay, focused && fieldStyles.overlayFocused]} />
         <View style={fieldStyles.row}>{children}</View>
       </View>
@@ -33,32 +52,37 @@ function FrostedField({ children, focused }: { children: React.ReactNode; focuse
 }
 
 const fieldStyles = StyleSheet.create({
-  outer: { marginBottom: 16 },
+  outer:        { marginBottom: 16 },
   outerFocused: {},
   clip: {
     borderRadius: radius.field,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(168,163,241,0.2)',
     overflow: 'hidden',
   },
   clipFocused: {
-    borderColor: 'rgba(74,61,216,0.5)',
+    borderColor: colors.primaryDim,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: colors.surfaceContainerHighest,
   },
   overlayFocused: {
-    backgroundColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: 'rgba(32,26,97,0.95)',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 52,
+    height: 54,
   },
 });
 
+/* ─── Main screen ──────────────────────────────────────────────────────────── */
 export default function LoginScreen() {
   const [identifier, setIdentifier]     = useState('');
   const [password, setPassword]         = useState('');
@@ -69,25 +93,23 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
 
   /* Mount animations */
-  const brandOpacity = useRef(new Animated.Value(0)).current;
+  const brandOpacity    = useRef(new Animated.Value(0)).current;
   const brandTranslateY = useRef(new Animated.Value(-20)).current;
   const sheetTranslateY = useRef(new Animated.Value(40)).current;
-  const sheetOpacity = useRef(new Animated.Value(0)).current;
-  const iconScale = useRef(new Animated.Value(0.7)).current;
+  const sheetOpacity    = useRef(new Animated.Value(0)).current;
+  const iconScale       = useRef(new Animated.Value(0.7)).current;
 
   useEffect(() => {
-    // Brand fades in and slides down
     Animated.parallel([
-      Animated.timing(brandOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(brandOpacity,    { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.spring(brandTranslateY, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
-      Animated.spring(iconScale, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
+      Animated.spring(iconScale,       { toValue: 1, tension: 100, friction: 8,  useNativeDriver: true }),
     ]).start();
 
-    // Sheet slides up with delay
     setTimeout(() => {
       Animated.parallel([
         Animated.spring(sheetTranslateY, { toValue: 0, tension: 60, friction: 14, useNativeDriver: true }),
-        Animated.timing(sheetOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.timing(sheetOpacity,    { toValue: 1, duration: 350, useNativeDriver: true }),
       ]).start();
     }, 150);
   }, []);
@@ -120,13 +142,20 @@ export default function LoginScreen() {
 
   return (
     <AppBackground>
-      {/* Top brand section — fixed height */}
-      <Animated.View style={[styles.top, { paddingTop: insets.top + 20, opacity: brandOpacity, transform: [{ translateY: brandTranslateY }] }]}>
-        <View style={styles.orb1} />
-        <View style={styles.orb2} />
-
+      {/* Top brand section */}
+      <Animated.View
+        style={[
+          styles.top,
+          {
+            paddingTop: insets.top + 24,
+            opacity: brandOpacity,
+            transform: [{ translateY: brandTranslateY }],
+          },
+        ]}
+      >
+        {/* App icon */}
         <Animated.View style={[styles.appIcon, { transform: [{ scale: iconScale }] }]}>
-          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={styles.appIconOverlay} />
           <MaterialCommunityIcons name="food-apple" size={48} color="#fff" />
         </Animated.View>
@@ -135,10 +164,12 @@ export default function LoginScreen() {
         <Text style={styles.appTagline}>Your personalized nutrition companion</Text>
       </Animated.View>
 
-      {/* Sheet — flex:1 stretches to bottom of screen */}
+      {/* Sheet */}
       <KeyboardAvoidingView style={styles.kavWrapper} behavior="padding">
-        <Animated.View style={[styles.sheet, { opacity: sheetOpacity, transform: [{ translateY: sheetTranslateY }] }]}>
-          <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill} />
+        <Animated.View
+          style={[styles.sheet, { opacity: sheetOpacity, transform: [{ translateY: sheetTranslateY }] }]}
+        >
+          <BlurView intensity={35} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={styles.sheetOverlay} />
 
           <ScrollView
@@ -160,13 +191,15 @@ export default function LoginScreen() {
             <Text style={styles.fieldLabel}>Email or User ID</Text>
             <FrostedField focused={focusedField === 'id'}>
               <MaterialCommunityIcons
-                name="account-outline" size={18}
-                color="rgba(0,0,0,0.35)" style={styles.fieldIcon}
+                name="account-outline"
+                size={18}
+                color={focusedField === 'id' ? colors.primary : colors.onSurfaceVariant}
+                style={styles.fieldIcon}
               />
               <TextInput
                 style={styles.input}
                 placeholder="e.g. john@mail.com or USR001"
-                placeholderTextColor="rgba(0,0,0,0.3)"
+                placeholderTextColor={colors.onSurfaceVariant}
                 value={identifier}
                 onChangeText={t => { setIdentifier(t); setError(''); }}
                 autoCapitalize="none"
@@ -181,13 +214,15 @@ export default function LoginScreen() {
             <Text style={styles.fieldLabel}>Password</Text>
             <FrostedField focused={focusedField === 'pw'}>
               <MaterialCommunityIcons
-                name="lock-outline" size={18}
-                color="rgba(0,0,0,0.35)" style={styles.fieldIcon}
+                name="lock-outline"
+                size={18}
+                color={focusedField === 'pw' ? colors.primary : colors.onSurfaceVariant}
+                style={styles.fieldIcon}
               />
               <TextInput
                 style={styles.input}
                 placeholder="Enter your password"
-                placeholderTextColor="rgba(0,0,0,0.3)"
+                placeholderTextColor={colors.onSurfaceVariant}
                 value={password}
                 onChangeText={t => { setPassword(t); setError(''); }}
                 secureTextEntry={!showPassword}
@@ -198,11 +233,12 @@ export default function LoginScreen() {
                 onPress={() => setShowPassword(v => !v)}
                 style={styles.eyeBtn}
                 activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <MaterialCommunityIcons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={18} color="rgba(0,0,0,0.35)"
+                  size={18}
+                  color={colors.onSurfaceVariant}
                 />
               </TouchableOpacity>
             </FrostedField>
@@ -218,16 +254,16 @@ export default function LoginScreen() {
             {/* Sign in button */}
             <View style={styles.signinRow}>
               {loading ? (
-                <ActivityIndicator color={colors.btnGradStart} size="small" />
+                <ActivityIndicator color={colors.primary} size="small" />
               ) : (
-                <GradientButton label="Sign In" onPress={handleSignIn} align="right" />
+                <GradientButton label="Sign In" onPress={handleSignIn} align="full" />
               )}
             </View>
 
-            {/* Footer — pushed to bottom */}
+            {/* Footer */}
             <View style={styles.footerSpacer} />
             <View style={styles.footer}>
-              <MaterialCommunityIcons name="shield-lock-outline" size={13} color="rgba(0,0,0,0.4)" />
+              <MaterialCommunityIcons name="shield-lock-outline" size={13} color={colors.onSurfaceVariant} />
               <Text style={styles.footerText}>Secured with Firebase Authentication</Text>
             </View>
           </ScrollView>
@@ -240,70 +276,78 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   kavWrapper: { flex: 1 },
 
-  /* Top brand section */
+  /* Top brand */
   top: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingBottom: 32, overflow: 'hidden',
-  },
-  orb1: {
-    position: 'absolute', width: 280, height: 280, borderRadius: 140,
-    backgroundColor: 'rgba(255,255,255,0.08)', top: '30%', left: '35%',
-  },
-  orb2: {
-    position: 'absolute', width: 160, height: 160, borderRadius: 80,
-    backgroundColor: 'rgba(255,255,255,0.06)', top: '8%', left: '5%',
-  },
-  appIcon: {
-    width: 88, height: 88, borderRadius: 24,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 24, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25, shadowRadius: 32, elevation: 12,
-  },
-  appIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(90,75,195,0.7)' },
-  appName:    { fontSize: 32, fontWeight: '700', color: '#fff', letterSpacing: -0.5, marginBottom: 8 },
-  appTagline: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.5)' },
-
-  /* Sheet — flex:1 so it extends all the way to the bottom */
-  sheet: {
-    flex: 1,
-    borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', borderBottomWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 32,
     overflow: 'hidden',
   },
-  sheetOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.40)' },
-  sheetScroll: { paddingHorizontal: 28, paddingTop: 12, flexGrow: 1 },
+  appIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(179,255,243,0.25)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    elevation: 16,
+  },
+  appIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.accentIndigo },
+  appName:    { fontSize: 34, fontWeight: '800', color: colors.onSurface, letterSpacing: -1, marginBottom: 8 },
+  appTagline: { fontSize: 14, fontWeight: '400', color: colors.onSurfaceVariant },
+
+  /* Sheet */
+  sheet: {
+    flex: 1,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(179,255,243,0.15)',
+    borderBottomWidth: 0,
+    overflow: 'hidden',
+  },
+  sheetOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(11,8,45,0.82)' },
+  sheetScroll:  { paddingHorizontal: 28, paddingTop: 12, flexGrow: 1 },
 
   /* Handle */
   handle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    alignSelf: 'center', marginBottom: 24,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(168,163,241,0.3)',
+    alignSelf: 'center',
+    marginBottom: 28,
   },
 
   /* Welcome text */
-  welcomeTitle: { fontSize: 28, fontWeight: '700', color: '#111', letterSpacing: -0.5, marginBottom: 5 },
-  welcomeSub:   { fontSize: 15, fontWeight: '400', color: 'rgba(0,0,0,0.5)', marginBottom: 26 },
+  welcomeTitle: { fontSize: 30, fontWeight: '800', color: colors.onSurface, letterSpacing: -0.8, marginBottom: 6 },
+  welcomeSub:   { fontSize: 15, fontWeight: '400', color: colors.onSurfaceVariant, marginBottom: 28 },
 
-  /* Field label */
-  fieldLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(0,0,0,0.7)', marginBottom: 8 },
+  /* Fields */
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.onSurfaceVariant, marginBottom: 8 },
   fieldIcon:  { marginRight: 10 },
-  input:      { flex: 1, fontSize: 15, fontWeight: '400', color: '#111', height: '100%' },
+  input:      { flex: 1, fontSize: 15, fontWeight: '400', color: colors.onSurface, height: '100%' },
   eyeBtn:     { padding: 2 },
 
   /* Error */
   errorRow: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginBottom: 16, marginTop: -4,
-    backgroundColor: 'rgba(239,68,68,0.12)',
+    backgroundColor: 'rgba(253,111,133,0.12)',
     paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)',
+    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(253,111,133,0.25)',
   },
   errorText: { color: colors.error, fontSize: 13, flex: 1 },
 
   /* Sign in row */
-  signinRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 },
+  signinRow: { marginTop: 8 },
 
   /* Footer */
   footerSpacer: { flex: 1, minHeight: 16 },
@@ -311,5 +355,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingTop: 16,
   },
-  footerText: { fontSize: 12, fontWeight: '500', color: 'rgba(0,0,0,0.45)' },
+  footerText: { fontSize: 12, fontWeight: '500', color: colors.onSurfaceVariant },
 });
